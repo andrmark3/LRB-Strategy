@@ -2,6 +2,13 @@
 LRB Strategy — Central Configuration
 All strategy parameters in one place.
 Change here, engine + MT5 EA stay in sync.
+
+PARAMETER HISTORY:
+  regime_filter: 500p → 400p (2026-04-07)
+    Sweep of 12 thresholds on YM 3yr + MT5 Jan-Apr 2026 showed:
+    400p gives MT5 PF=7.06, WR=64%, Net=+7.9%, DD=1.0% vs
+    500p gives MT5 PF=2.91, WR=56%, Net=+6.6%, DD=2.0%
+    YM impact: +37.5% net at 400p vs +39.4% at 500p (small cost, big MT5 gain)
 """
 
 # ── SESSION HOURS (UTC) ────────────────────────────────────────────────────
@@ -18,8 +25,10 @@ SESSION = {
 # ── FILTERS ─────────────────────────────────────────────────────────────────
 FILTERS = {
     "min_range":        100,   # pips — skip choppy days
-    "max_range":        400,   # pips — skip news/high-vol days
-    "regime_filter":    500,   # pips — skip day if 5d avg range > this ← KEY FIX
+    "max_range":        400,   # pips — skip single-day news/high-vol
+    "regime_filter":    400,   # pips — skip day if 5d avg range > this ← OPTIMIZED
+    # 400p chosen from 12-value sweep: best MT5 PF=7.06 + WR=64% + DD=1.0%
+    # vs 500p (old): MT5 PF=2.91, WR=56%, DD=2.0%
     "regime_lookback":  5,     # trading days for rolling avg
     "trend_lb":         20,    # trading days for 20d high/low position
     "trend_min_closes": 10,    # min prior closes before trusting trend ← KEY FIX
