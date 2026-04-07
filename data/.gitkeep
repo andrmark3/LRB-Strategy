@@ -1,0 +1,5 @@
+# Place your CSV data files here — they are gitignored.
+# Supported:
+#   ym-1m_bk_-_2020-today.csv     (backtestmarket.com, CT)
+#   USA30IDXUSD_M1*.csv           (bluecapitaltrading.com, UTC)
+#   US30_M1_*.csv                 (MT5 export, UTC)

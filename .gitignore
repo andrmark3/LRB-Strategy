@@ -1,0 +1,26 @@
+# Data files — too large for git
+data/*.csv
+data/*.txt
+data/*.zip
+!data/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+venv/
+.venv/
+
+# MT5 compiled
+mt5/*.ex5
+mt5/*.log
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
