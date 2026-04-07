@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>LRB V__BUILD_VERSION__ — FTMO Backtester</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+/* ── BASE ── */
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f0ee;color:#1a1a1a;font-size:14px}
+.hdr{background:#1a1a1a;color:#fff;padding:13px 24px;display:flex;align-items:center;gap:10px;justify-content:space-between}
+.hdr h1{font-size:15px;font-weight:500}
+.hdr-right{font-size:11px;color:#666;font-family:monospace}
+.badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;letter-spacing:.05em}
+.badge.v2{background:#3B6D11;color:#fff}
+.badge.ftmo{background:#185FA5;color:#fff}
+.wrap{max-width:1140px;margin:0 auto;padding:20px 24px}
+.tabs{display:flex;border-bottom:1.5px solid #e0e0e0;margin-bottom:20px}
+.tab{padding:9px 18px;font-size:13px;cursor:pointer;border:none;border-bottom:2px solid transparent;color:#999;background:none;font-family:inherit;margin-bottom:-1.5px}
+.tab.active{color:#1a1a1a;border-bottom:2px solid #1a1a1a;font-weight:500}
+.sec{display:none}.sec.active{display:block}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.g5{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.card{background:#ebebea;border-radius:8px;padding:12px 14px}
+.cw{background:#fff;border:0.5px solid #e0e0e0;border-radius:12px;padding:16px 18px;margin-bottom:14px}
+.cw.last{margin-bottom:0}
+.ml{font-size:11px;color:#888;margin-bottom:3px;text-transform:uppercase;letter-spacing:.04em}
+.mv{font-size:22px;font-weight:700}
+.mv.g{color:#3B6D11}.mv.r{color:#A32D2D}.mv.a{color:#854F0B}.mv.b{color:#185FA5}
+.row{display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+.rl{min-width:220px;font-size:12px;color:#555}
+.val{font-size:12px;font-weight:600;min-width:52px;text-align:right}
+input[type=range]{flex:1;min-width:120px;accent-color:#1a1a1a}
+.tog-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+label.tog{display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;padding:4px 10px;background:#f5f5f3;border-radius:6px;border:0.5px solid #ddd}
+.btn{padding:8px 18px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;border:0.5px solid #ccc;background:#fff}
+.btn.pri{background:#1a1a1a;color:#fff;border-color:#1a1a1a}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.log{background:#1a1a1a;color:#c8d6c8;font-family:monospace;font-size:12px;padding:12px;border-radius:8px;height:140px;overflow-y:auto;white-space:pre;margin-bottom:8px}
+.pb{background:#e0e0e0;border-radius:4px;height:4px;margin-bottom:4px}
+.pf{height:100%;background:#1a1a1a;border-radius:4px;transition:width .1s}
+.alert{border-radius:8px;padding:10px 14px;font-size:12px;margin-bottom:14px;line-height:1.7}
+.alert.ok{background:#EAF3DE;border:0.5px solid #97C459;color:#1a3a00}
+.alert.warn{background:#FAEEDA;border:0.5px solid #EF9F27;color:#5a3500}
+.alert.info{background:#EAF0FA;border:0.5px solid #7AAEE8;color:#0d2d5e}
+.alert.err{background:#FCEBEB;border:0.5px solid #F09595;color:#5a0000}
+.drop{border:2px dashed #ccc;border-radius:12px;padding:28px;text-align:center;cursor:pointer;transition:.15s;margin-bottom:12px}
+.drop.over,.drop:hover{border-color:#1a1a1a;background:#f8f8f6}
+.drop.loaded{border-color:#3B6D11;border-style:solid;background:#EAF3DE}
+table{width:100%;border-collapse:collapse;font-size:12px}
+table th{text-align:left;font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.04em;padding:6px 8px;border-bottom:1px solid #e0e0e0}
+table td{padding:6px 8px;border-bottom:0.5px solid #f0f0f0}
+.gauge-wrap{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.gauge{background:#f5f5f3;border-radius:8px;padding:12px;text-align:center}
+.gauge-label{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
+.gauge-val{font-size:20px;font-weight:700;margin-bottom:2px}
+.gauge-limit{font-size:10px;color:#aaa;margin-bottom:6px}
+.gauge-bar{background:#e0e0e0;border-radius:4px;height:5px}
+.gauge-fill{height:100%;border-radius:4px;transition:width .3s}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <div style="display:flex;align-items:center;gap:10px">
+    <h1>LRB V__BUILD_VERSION__ — FTMO Backtester</h1>
+    <span class="badge v2">V2</span>
+    <span class="badge ftmo">FTMO</span>
+  </div>
+  <div class="hdr-right">Built __BUILD_TIMESTAMP__ from engine/config.py</div>
+</div>
+
+<div class="wrap">
+<div class="tabs">
+  <button class="tab active" onclick="sw('setup')">⚙ Setup</button>
+  <button class="tab" onclick="sw('run')">▶ Run</button>
+  <button class="tab" onclick="sw('results')" id="tab-results" style="display:none">📊 Results</button>
+  <button class="tab" onclick="sw('ftmo')" id="tab-ftmo-btn" style="display:none">🏆 FTMO</button>
+</div>
+
+<!-- ══ SETUP ══ -->
+<div id="tab-setup" class="sec active">
+  <div class="alert info">
+    <strong>Auto-built from engine/config.py</strong> — all defaults below come directly from the Python engine.
+    To change a parameter: edit <code>engine/config.py</code> → run <code>python backtester/build.py</code> → reload this file.
+    Manual slider changes here override for this session only.
+  </div>
+
+  <div class="g2">
+    <div>
+      <div class="cw">
+        <h3 style="margin-bottom:12px">Session Hours</h3>
+        <div class="row"><label class="rl">Timezone</label>
+          <select id="tz" onchange="applyTz()" style="flex:1;padding:5px;border-radius:6px;border:0.5px solid #ccc;font-size:12px">
+            <option value="ct">Chicago CT — backtestmarket.com</option>
+            <option value="utc">UTC — bluecapitaltrading / MT5</option>
+            <option value="ny">New York ET — TradingView</option>
+          </select>
+        </div>
+        <div class="row"><label class="rl">London start</label><input type="range" min="0" max="12" step="1" id="ls" oninput="u('ls-v',pad(+this.value)+':00')"><span class="val" id="ls-v">08:00</span></div>
+        <div class="row"><label class="rl">London end</label><input type="range" min="0" max="16" step="1" id="le" oninput="u('le-v',pad(+this.value)+':00')"><span class="val" id="le-v">14:00</span></div>
+        <div class="row"><label class="rl">NY open</label><input type="range" min="0" max="18" step="1" id="no" oninput="u('no-v',pad(+this.value)+':30')"><span class="val" id="no-v">14:30</span></div>
+        <div class="row"><label class="rl">Session close</label><input type="range" min="0" max="23" step="1" id="nc" oninput="u('nc-v',pad(+this.value)+':00')"><span class="val" id="nc-v">21:00</span></div>
+      </div>
+      <div class="cw">
+        <h3 style="margin-bottom:12px">Risk Management</h3>
+        <div class="row"><label class="rl">Account size ($)</label><input type="range" min="5000" max="200000" step="5000" id="acc" oninput="u('acc-v','$'+Number(this.value).toLocaleString())"><span class="val" id="acc-v">$10,000</span></div>
+        <div class="row"><label class="rl">Risk per leg (%)</label><input type="range" min="0.25" max="2" step="0.25" id="risk" oninput="u('risk-v',this.value+'%')"><span class="val" id="risk-v">0.5%</span></div>
+        <div class="row"><label class="rl">Stop loss (pips)</label><input type="range" min="50" max="200" step="5" id="sl" oninput="u('sl-v',this.value+'p')"><span class="val" id="sl-v">100p</span></div>
+        <div class="row"><label class="rl">Spread (pips)</label><input type="range" min="0" max="10" step="1" id="spread" oninput="u('sp-v',this.value+'p')"><span class="val" id="sp-v">2p</span></div>
+        <div class="row"><label class="rl">Slippage (pips)</label><input type="range" min="0" max="5" step="1" id="slip" oninput="u('slp-v',this.value+'p')"><span class="val" id="slp-v">1p</span></div>
+        <div class="row"><label class="rl">FTMO daily guard (%)</label><input type="range" min="2" max="5" step="0.5" id="ftmog" oninput="u('ftmog-v',this.value+'%')"><span class="val" id="ftmog-v">4%</span></div>
+      </div>
+    </div>
+    <div>
+      <div class="cw">
+        <h3 style="margin-bottom:12px">Checkpoints (CP)</h3>
+        <div class="g4" style="margin-bottom:10px">
+          <div class="card" style="text-align:center"><div class="ml">CP1 BE</div><div style="font-size:18px;font-weight:700;color:#185FA5">+40p</div></div>
+          <div class="card" style="text-align:center"><div class="ml">CP2 T1</div><div style="font-size:18px;font-weight:700;color:#3B6D11">+80p</div></div>
+          <div class="card" style="text-align:center"><div class="ml">CP3 Trail</div><div style="font-size:18px;font-weight:700;color:#3B6D11">+120p</div></div>
+          <div class="card" style="text-align:center"><div class="ml">CP4 Target</div><div style="font-size:18px;font-weight:700;color:#3B6D11">+250p</div></div>
+        </div>
+        <div style="font-size:11px;color:#888;line-height:1.8">2 simultaneous positions (T1+T2), each at <strong>0.5% risk</strong>. 1:2.5 R/R at CP4. Breakeven at CP1. Optimised across 486 configs on 3yr real data.</div>
+      </div>
+      <div class="cw">
+        <h3 style="margin-bottom:10px">Filters</h3>
+        <div class="tog-row">
+          <label class="tog"><input type="checkbox" id="f-liq" checked> Liquidity Sweep ⚡</label>
+          <label class="tog"><input type="checkbox" id="f-trend" checked> Trend Filter ⚡</label>
+          <label class="tog"><input type="checkbox" id="f-maxr" checked> Max Range</label>
+          <label class="tog"><input type="checkbox" id="f-minr" checked> Min Range</label>
+          <label class="tog"><input type="checkbox" id="f-wknd" checked> Skip Weekends</label>
+          <label class="tog"><input type="checkbox" id="f-spr" checked> Spread+Slip</label>
+          <label class="tog"><input type="checkbox" id="f-ftmo" checked> FTMO Guard</label>
+          <label class="tog"><input type="checkbox" id="f-nydelay" checked> NY Delay ⚡</label>
+          <label class="tog"><input type="checkbox" id="f-regime" checked> Regime Filter ⚡</label>
+        </div>
+        <div class="row"><label class="rl">Min range (pips)</label><input type="range" min="20" max="300" step="10" id="minr" oninput="u('minr-v',this.value+'p')"><span class="val" id="minr-v">100p</span></div>
+        <div class="row"><label class="rl">Max range (pips)</label><input type="range" min="150" max="800" step="25" id="maxr" oninput="u('maxr-v',this.value+'p')"><span class="val" id="maxr-v">400p</span></div>
+        <div class="row"><label class="rl">Confirm bars</label><input type="range" min="1" max="4" step="1" id="conf" oninput="u('conf-v',this.value+' bar'+(+this.value>1?'s':''))"><span class="val" id="conf-v">1 bar</span></div>
+        <div class="row"><label class="rl">Trend lookback (days)</label><input type="range" min="10" max="40" step="5" id="trlb" oninput="u('trlb-v',this.value+'d')"><span class="val" id="trlb-v">20d</span></div>
+        <div class="row" style="border-top:0.5px solid #eee;margin-top:6px;padding-top:10px">
+          <label class="rl" style="color:#A32D2D;font-weight:500">NY delay (min) ⚡ fixed Mar 2026</label>
+          <input type="range" min="0" max="45" step="5" id="nyd" oninput="u('nyd-v',this.value+'min')">
+          <span class="val" id="nyd-v">15min</span>
+        </div>
+        <div class="row">
+          <label class="rl" style="color:#A32D2D;font-weight:500">Regime skip if 5d avg > (pips)</label>
+          <input type="range" min="300" max="700" step="25" id="atr" oninput="u('atr-v',this.value+'p')">
+          <span class="val" id="atr-v">500p</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ RUN ══ -->
+<div id="tab-run" class="sec">
+  <div class="cw">
+    <h3 style="margin-bottom:10px">Load Data</h3>
+    <div class="alert info">
+      <strong>Supported formats (auto-detected):</strong><br>
+      • <strong>backtestmarket.com</strong> — no header, semicolons, <code>DD/MM/YYYY;HH:MM;O;H;L;C;V</code> → CT auto-set<br>
+      • <strong>MetaTrader 5</strong> — TAB header <code>&lt;DATE&gt; &lt;TIME&gt; &lt;OPEN&gt;...</code> date as <code>YYYY.MM.DD</code> → UTC auto-set<br>
+      • <strong>bluecapitaltrading.com</strong> — TAB header <code>Time Open High Low Close Volume</code> → UTC auto-set<br>
+      • <strong>TradingView / MT4</strong> — CSV/TAB with date+time headers → UTC auto-set<br>
+      ⚠ Use <strong>200,000+ bars</strong> from bluecapitaltrading for reliable trend filter (50k = ~7 weeks, too short)
+    </div>
+    <div class="drop" id="drop" onclick="document.getElementById('fi').click()"
+         ondragover="event.preventDefault();this.classList.add('over')"
+         ondragleave="this.classList.remove('over')" ondrop="onDrop(event)">
+      <div style="font-size:28px;margin-bottom:8px">📂</div>
+      <div id="drop-lbl" style="font-size:13px;color:#888">Click or drag &amp; drop CSV</div>
+      <div id="file-lbl" style="font-size:13px;font-weight:500;color:#3B6D11;display:none"></div>
+    </div>
+    <input type="file" id="fi" accept=".csv,.txt" style="display:none" onchange="loadFile(this.files[0])">
+    <div id="parse-ok" style="display:none" class="alert ok"></div>
+    <div style="display:flex;gap:10px;margin-bottom:14px">
+      <button class="btn pri" id="btn-run" onclick="runBacktest()" disabled>▶ Run Backtest</button>
+    </div>
+    <div class="log" id="log">Ready. Upload CSV then click Run...</div>
+    <div class="pb"><div class="pf" id="pbar" style="width:0%"></div></div>
+    <div style="font-size:11px;color:#aaa;text-align:right" id="ptxt">0%</div>
+  </div>
+</div>
+
+<!-- ══ RESULTS ══ -->
+<div id="tab-results" class="sec">
+  <div class="g5" id="kpi-row" style="margin-bottom:14px"></div>
+  <div class="cw"><canvas id="eq-chart" height="80"></canvas></div>
+  <div class="g2">
+    <div class="cw"><h3 style="margin-bottom:10px">Yearly</h3><div id="yr-grid"></div></div>
+    <div class="cw"><h3 style="margin-bottom:10px">Monthly heatmap</h3><div id="mo-hm" style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px"></div></div>
+  </div>
+  <div class="cw last"><h3 style="margin-bottom:10px">Trade Log</h3><div style="overflow-x:auto"><table id="trade-tbl"></table></div></div>
+</div>
+
+<!-- ══ FTMO ══ -->
+<div id="tab-ftmo" class="sec">
+  <div id="no-ftmo" style="color:#888;padding:2rem">Run the backtest first.</div>
+  <div id="ftmo-body" style="display:none">
+    <div class="alert" id="ftmo-verdict"></div>
+    <div class="cw"><h3 style="margin-bottom:10px">Challenge Limits</h3><div class="gauge-wrap" id="gauges"></div></div>
+    <div class="cw"><h3 style="margin-bottom:10px">Monthly P&amp;L vs 7% target</h3>
+      <div id="mo-heatmap" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px"></div>
+    </div>
+    <div class="cw last"><h3 style="margin-bottom:10px">Risk at current settings</h3><div id="ror" style="font-size:13px;line-height:2.2"></div></div>
+  </div>
+</div>
+
+</div><!-- /wrap -->
+
+<script>
+/* __CONFIG_INJECT__ */
+
+// ── HELPERS ──
+const pad = h => String(h).padStart(2,'0');
+const u   = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
+function sw(t){
+  document.querySelectorAll('.sec').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+t).classList.add('active');
+  document.querySelector(`[onclick="sw('${t}')"]`).classList.add('active');
+}
+function clrLog(){document.getElementById('log').textContent='';}
+function log(msg,type='i'){
+  const el=document.getElementById('log');
+  const colors={i:'#c8d6c8',s:'#a8d4a8',e:'#f8a8a8',w:'#f8d8a8'};
+  el.innerHTML+=`<span style="color:${colors[type]||colors.i}">${msg}</span>\n`;
+  el.scrollTop=el.scrollHeight;
+}
+function prog(p,msg){
+  document.getElementById('pbar').style.width=p+'%';
+  document.getElementById('ptxt').textContent=Math.round(p)+'% — '+msg;
+}
+
+// ── TIMEZONE PRESETS (injected from config.py) ──
+function applyTz(){
+  const tz=document.getElementById('tz').value;
+  const p=CFG.tz_presets[tz];
+  if(!p) return;
+  document.getElementById('ls').value=p.london_start; u('ls-v',pad(p.london_start)+':00');
+  document.getElementById('le').value=p.london_end;   u('le-v',pad(p.london_end)+':00');
+  document.getElementById('no').value=p.ny_open_h;    u('no-v',pad(p.ny_open_h)+':30');
+  document.getElementById('nc').value=p.ny_close_h;   u('nc-v',pad(p.ny_close_h)+':00');
+}
+
+// ── INIT SLIDERS FROM CFG ──
+(function initFromCFG(){
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
+  set('minr', CFG.min_range);    u('minr-v', CFG.min_range+'p');
+  set('maxr', CFG.max_range);    u('maxr-v', CFG.max_range+'p');
+  set('conf', CFG.confirm_bars); u('conf-v', CFG.confirm_bars+' bar'+(CFG.confirm_bars>1?'s':''));
+  set('trlb', CFG.trend_lb);     u('trlb-v', CFG.trend_lb+'d');
+  set('nyd',  CFG.ny_delay_min); u('nyd-v',  CFG.ny_delay_min+'min');
+  set('atr',  CFG.regime_filter);u('atr-v',  CFG.regime_filter+'p');
+  set('sl',   CFG.sl_pips);      u('sl-v',   CFG.sl_pips+'p');
+  set('risk', CFG.risk_per_leg_pct); u('risk-v', CFG.risk_per_leg_pct+'%');
+  set('spread',CFG.spread);      u('sp-v',   CFG.spread+'p');
+  set('slip', CFG.slippage);     u('slp-v',  CFG.slippage+'p');
+  set('ftmog',CFG.ftmo_daily_guard); u('ftmog-v', CFG.ftmo_daily_guard+'%');
+  set('acc',  CFG.balance);      u('acc-v',  '$'+Number(CFG.balance).toLocaleString());
+  // Default timezone to UTC
+  document.getElementById('tz').value='utc'; applyTz();
+})();
+
+// ── PARAMS ──
+function getP(){
+  return{
+    lonStart:+document.getElementById('ls').value,
+    lonEnd:  +document.getElementById('le').value,
+    nyOpen:  +document.getElementById('no').value,
+    nyClose: +document.getElementById('nc').value,
+    nyMin:   30,
+    nyDelay: +document.getElementById('nyd').value,
+    atrSkip: +document.getElementById('atr').value,
+    account: +document.getElementById('acc').value,
+    riskPct: +document.getElementById('risk').value/100,
+    sl:      +document.getElementById('sl').value,
+    spread:  +document.getElementById('spread').value,
+    slippage:+document.getElementById('slip').value,
+    ftmoDaily:+document.getElementById('ftmog').value/100,
+    minRange:+document.getElementById('minr').value,
+    maxRange:+document.getElementById('maxr').value,
+    confirm: +document.getElementById('conf').value,
+    trendLb: +document.getElementById('trlb').value,
+    trendMinCloses: CFG.trend_min_closes,
+    cp1:CFG.cp1_pips, cp2:CFG.cp2_pips, cp3:CFG.cp3_pips, cp4:CFG.cp4_pips,
+    pipSize:1,
+    useLiq:  document.getElementById('f-liq').checked,
+    useTrend:document.getElementById('f-trend').checked,
+    useMaxR: document.getElementById('f-maxr').checked,
+    useMinR: document.getElementById('f-minr').checked,
+    useWknd: document.getElementById('f-wknd').checked,
+    useSpr:  document.getElementById('f-spr').checked,
+    useFtmo: document.getElementById('f-ftmo').checked,
+    useNyDelay:document.getElementById('f-nydelay').checked,
+    useRegime: document.getElementById('f-regime').checked,
+  };
+}
+
+// ── CSV PARSERS ──
+function parseDt(raw){
+  let s=raw.trim().replace(/\s+(UTC|GMT|EST|EDT|CET|CEST)$/i,'');
+  const dmy=/^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(s);
+  if(dmy){const r=s.slice(dmy[0].length).trim();s=`${dmy[3]}-${dmy[2].padStart(2,'0')}-${dmy[1].padStart(2,'0')}${r?'T'+r:'T00:00'}Z`;return new Date(s);}
+  const ymd=/^(\d{4})\.(\d{2})\.(\d{2})\s+(\d{2}:\d{2}(?::\d{2})?)/.exec(s);
+  if(ymd)return new Date(`${ymd[1]}-${ymd[2]}-${ymd[3]}T${ymd[4]}Z`);
+  const dmd=/^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}:\d{2})/.exec(s);
+  if(dmd)return new Date(`${dmd[3]}-${dmd[2]}-${dmd[1]}T${dmd[4]}Z`);
+  if(!s.includes('Z')&&!s.includes('+'))s+='Z';
+  return new Date(s);
+}
+function isMT5(line){return line.includes('<DATE>')&&line.includes('<TIME>');}
+function isNoHdr(line,sep){const c=line.split(sep);return c.length>=6&&/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(c[0].trim());}
+
+function parseCSV(text){
+  const lines=text.trim().split(/\r?\n/).filter(l=>l.trim()&&!l.startsWith('#'));
+  if(lines.length<3)throw new Error('File too short');
+  const sep=lines[0].includes('\t')?'\t':lines[0].includes(';')?';':',';
+  let bs=[],skip=0,fmt='',tz='utc';
+  if(isNoHdr(lines[0],sep)){
+    fmt='backtestmarket.com (DD/MM/YYYY, CT)'; tz='ct';
+    for(const l of lines){const c=l.split(';').map(x=>x.trim());if(c.length<6){skip++;continue;}const dt=parseDt(c[0]+' '+c[1]);if(isNaN(dt))continue;const o=+c[2],h=+c[3],lo=+c[4],cl=+c[5];if(isNaN(o)||isNaN(h)||isNaN(lo)||isNaN(cl)){skip++;continue;}bs.push({dt,o,h,l:lo,c:cl});}
+  } else if(isMT5(lines[0])){
+    fmt='MT5 export (<DATE><TIME>, UTC)'; tz='utc';
+    for(let i=1;i<lines.length;i++){const c=lines[i].split('\t').map(x=>x.trim());if(c.length<6)continue;const dt=parseDt(c[0]+' '+c[1]);if(isNaN(dt))continue;const o=+c[2],h=+c[3],lo=+c[4],cl=+c[5];if(isNaN(o)||isNaN(h)||isNaN(lo)||isNaN(cl))continue;bs.push({dt,o,h,l:lo,c:cl});}
+  } else {
+    fmt='Standard headered (bluecapital/TV, UTC)'; tz='utc';
+    const hdrs=lines[0].split(sep).map(h=>h.trim().toLowerCase().replace(/[<>"']/g,''));
+    const fc=(...ns)=>{for(const n of ns){for(let i=0;i<hdrs.length;i++)if(hdrs[i].includes(n))return i;}return -1;};
+    const iDate=fc('date'),iTime=fc('time'),iO=fc('open'),iH=fc('high'),iL=fc('low'),iC=fc('close');
+    if([iO,iH,iL,iC].some(x=>x<0))throw new Error('Cannot find OHLC columns: '+hdrs.join(','));
+    for(let i=1;i<lines.length;i++){const c=lines[i].split(sep).map(x=>x.trim().replace(/^"|"$/g,''));if(c.length<5)continue;let raw=iDate>=0&&iTime>=0&&iDate!==iTime?c[iDate]+' '+c[iTime]:iTime>=0?c[iTime]:iDate>=0?c[iDate]:'';
+    if(!raw)continue;const dt=parseDt(raw);if(isNaN(dt))continue;const o=+c[iO],h=+c[iH],lo=+c[iL],cl=+c[iC];if(isNaN(o)||isNaN(h)||isNaN(lo)||isNaN(cl))continue;bs.push({dt,o,h,l:lo,c:cl});}
+  }
+  if(bs.length<10)throw new Error(`Only ${bs.length} bars parsed`);
+  bs.sort((a,b)=>a.dt-b.dt);
+  document.getElementById('tz').value=tz; applyTz();
+  return{bars:bs,skip,fmt};
+}
+
+// ── FILE LOADING ──
+let bars=null;
+function onDrop(e){e.preventDefault();document.getElementById('drop').classList.remove('over');if(e.dataTransfer.files[0])loadFile(e.dataTransfer.files[0]);}
+function loadFile(file){
+  if(!file)return;
+  const r=new FileReader();
+  r.onload=e=>{
+    try{
+      const res=parseCSV(e.target.result);
+      bars=res.bars;
+      const from=bars[0].dt.toISOString().slice(0,10);
+      const to=bars[bars.length-1].dt.toISOString().slice(0,10);
+      const udays=new Set(bars.map(b=>b.dt.toISOString().slice(0,10)));
+      const tdays=[...udays].filter(d=>{const dow=new Date(d+'T12:00Z').getUTCDay();return dow>=1&&dow<=5;}).length;
+      document.getElementById('file-lbl').textContent=`✓ ${file.name}  ·  ${bars.length.toLocaleString()} bars  ·  ${tdays} trading days  ·  ${from} → ${to}`;
+      document.getElementById('file-lbl').style.display='block';
+      document.getElementById('drop-lbl').style.display='none';
+      document.getElementById('drop').classList.add('loaded');
+      document.getElementById('btn-run').disabled=false;
+      const ok=document.getElementById('parse-ok');
+      ok.style.display='block';
+      ok.className=tdays<60?'alert warn':'alert ok';
+      const shortWarn=tdays<60?`<br>⚠ <strong>Short file (${tdays} days)</strong>: trend filter needs 10+ prior closes. Download 200k+ bars for reliable results.`:""; 
+      ok.innerHTML=`<strong>Loaded:</strong> ${bars.length.toLocaleString()} bars · ${tdays} trading days · ${from} → ${to}<br>Format: <em>${res.fmt}</em>${res.skip?` · ${res.skip} skipped`:''}${shortWarn}`;
+      clrLog();
+      log(`✓ ${file.name} — ${bars.length.toLocaleString()} bars, ${tdays} trading days`,'s');
+      log(`Format: ${res.fmt}`,'i');
+      if(tdays<60)log(`⚠ Short file — trend filter warming up for first 10 days.`,'w');
+    }catch(err){
+      const ok=document.getElementById('parse-ok');
+      ok.style.display='block';ok.className='alert err';ok.textContent='Parse error: '+err.message;
+      log('Error: '+err.message,'e');bars=null;
+      document.getElementById('btn-run').disabled=true;
+    }
+  };
+  r.readAsText(file);
+}
+
+// ── ENGINE ──
+let lastResults=null;
+async function runBacktest(){
+  if(!bars){log('No data loaded','e');return;}
+  const P=getP();
+  document.getElementById('btn-run').disabled=true;
+  clrLog();prog(0,'Grouping bars...');
+  log(`Session: London ${pad(P.lonStart)}:00–${pad(P.lonEnd)}:00  NY ${pad(P.nyOpen)}:30  Close ${pad(P.nyClose)}:00`,'i');
+  log(`Filters: NyDelay=${P.useNyDelay?P.nyDelay+'min':'OFF'} Regime=${P.useRegime?P.atrSkip+'p':'OFF'} Sweep=${P.useLiq} Trend=${P.useTrend}`,'i');
+  await new Promise(r=>setTimeout(r,20));
+
+  // Group bars by date
+  const dayMap=new Map(); 
+  for(const b of bars){
+    const dk=b.dt.toISOString().slice(0,10);
+    if(!dayMap.has(dk))dayMap.set(dk,[]);
+    dayMap.get(dk).push(b);
+  }
+  const days=[...dayMap.keys()].sort();
+  const dc=new Map(days.map(d=>[d,dayMap.get(d)[dayMap.get(d).length-1].c]));
+
+  // Pre-compute London ranges for regime filter
+  const dayRanges=new Map();
+  for(const dk of days){
+    const lon=dayMap.get(dk).filter(b=>{const h=b.dt.getUTCHours();return h>=P.lonStart&&h<P.lonEnd;});
+    if(lon.length>=10)dayRanges.set(dk,Math.max(...lon.map(b=>b.h))-Math.min(...lon.map(b=>b.l)));
+  }
+
+  // Trend function with min closes and clamp
+  function getTrend(dk){
+    const idx=days.indexOf(dk);
+    if(idx<3)return 'FLAT';
+    const prev=days.slice(Math.max(0,idx-P.trendLb),idx);
+    const closes=prev.map(d=>dc.get(d)).filter(v=>v!=null);
+    if(closes.length<P.trendMinCloses)return 'FLAT';
+    const hi=Math.max(...closes),lo=Math.min(...closes),rng=hi-lo;
+    if(rng<1)return 'FLAT';
+    const cur=dc.get(dk)||lo;
+    const pos=Math.max(0,Math.min(1,(cur-lo)/rng));
+    if(pos>CFG.trend_up_pos)return 'UP';
+    if(pos<CFG.trend_dn_pos)return 'DOWN';
+    return 'FLAT';
+  }
+
+  let eq=P.account,pk=P.account,mdd=0,wins=0,losses=0,be=0,sk=0,ftmoSk=0;
+  let gw=0,gl=0,wp=0,lp=0,consec=0,mc=0;
+  const eqData=[],pnls=[],monthlyPnl={},yrData={},tradeLog=[];
+
+  for(let di=0;di<days.length;di++){
+    if(di%50===0){prog(di/days.length*85,'Running backtest...');await new Promise(r=>setTimeout(r,0));}
+    const dk=days[di];
+    const db=dayMap.get(dk);
+    if(P.useWknd){const dow=new Date(dk+'T12:00:00Z').getUTCDay();if(dow===0||dow===6){eqData.push({x:dk,y:eq});continue;}}
+
+    const lon=db.filter(b=>{const h=b.dt.getUTCHours();return h>=P.lonStart&&h<P.lonEnd;});
+    if(lon.length<10){eqData.push({x:dk,y:eq});continue;}
+    const rH=Math.max(...lon.map(b=>b.h)),rL=Math.min(...lon.map(b=>b.l)),rPips=(rH-rL)/P.pipSize;
+    if(P.useMinR&&rPips<P.minRange){sk++;eqData.push({x:dk,y:eq});continue;}
+    if(P.useMaxR&&rPips>P.maxRange){sk++;eqData.push({x:dk,y:eq});continue;}
+
+    // Regime filter
+    if(P.useRegime){
+      const prev5=days.slice(Math.max(0,di-5),di).filter(d=>new Date(d+'T12:00Z').getUTCDay()>=1&&new Date(d+'T12:00Z').getUTCDay()<=5);
+      if(prev5.length>=2){
+        const avgs=prev5.map(d=>dayRanges.get(d)||0).filter(v=>v>0);
+        if(avgs.length>=2&&avgs.reduce((a,b)=>a+b,0)/avgs.length>P.atrSkip){sk++;eqData.push({x:dk,y:eq});continue;}
+      }
+    }
+
+    if(P.useTrend){
+      const tr=getTrend(dk);
+      if(tr==='FLAT'){sk++;eqData.push({x:dk,y:eq});continue;}
+      var allowed=tr==='UP'?'BUY':'SELL';
+    } else {var allowed='both';}
+
+    const nyStartMin=(P.nyOpen*60+P.nyMin)+(P.useNyDelay?P.nyDelay:0);
+    const ny=db.filter(b=>{const hm=b.dt.getUTCHours()*60+b.dt.getUTCMinutes();return hm>=nyStartMin&&hm<P.nyClose*60;});
+    if(ny.length<5){eqData.push({x:dk,y:eq});continue;}
+
+    const dayStartEq=eq;
+    let liqBull=false,liqBear=false,sweepI=-1,bullCnt=0,bearCnt=0,eb=null,ed=null;
+    for(let i=0;i<ny.length;i++){
+      const bar=ny[i];
+      if(P.useLiq){
+        if(!liqBull&&bar.h>rH&&bar.c<=rH){liqBull=true;sweepI=i;}
+        if(!liqBear&&bar.l<rL&&bar.c>=rL){liqBear=true;sweepI=i;}
+        const canB=liqBull&&allowed!=='SELL',canS=liqBear&&allowed!=='BUY';
+        if((!canB&&!canS)||i<=sweepI)continue;
+        if(bar.c>rH){bullCnt++;bearCnt=0;}else if(bar.c<rL){bearCnt++;bullCnt=0;}else{bullCnt=0;bearCnt=0;}
+        if(bullCnt>=P.confirm&&canB){eb=bar;ed='BUY';break;}
+        if(bearCnt>=P.confirm&&canS){eb=bar;ed='SELL';break;}
+      } else {
+        if(bar.c>rH&&allowed!=='SELL'){eb=bar;ed='BUY';break;}
+        if(bar.c<rL&&allowed!=='BUY'){eb=bar;ed='SELL';break;}
+      }
+    }
+    if(!eb){eqData.push({x:dk,y:eq});continue;}
+
+    const adj=P.useSpr?(P.spread+P.slippage):0;
+    const en=eb.c+(ed==='BUY'?adj:-adj);
+    let t2sl=ed==='BUY'?en-P.sl:en+P.sl;
+    const ei=ny.indexOf(eb),nb=ny.slice(ei+1);
+    let ep=0,c1=false,t1d=false,t1p=0;
+    const pf2=p=>ed==='BUY'?p-en:en-p;
+    for(const b of nb){
+      const sh=ed==='BUY'?b.l<=t2sl:b.h>=t2sl;
+      if(sh){const raw=pf2(t2sl);ep=t1d?(t1p+raw)/2:raw;break;}
+      const p=pf2(b.c);
+      if(p>=P.cp1&&!c1){c1=true;t2sl=en;}
+      if(p>=P.cp2&&!t1d){t1d=true;t1p=P.cp2;t2sl=ed==='BUY'?en+P.cp1:en-P.cp1;}
+      if(p>=P.cp3&&t1d){const ns=ed==='BUY'?en+P.cp2:en-P.cp2;if(ed==='BUY'&&ns>t2sl||ed==='SELL'&&ns<t2sl)t2sl=ns;}
+      if(p>=P.cp4){ep=t1d?(t1p+P.cp4)/2:P.cp4;break;}
+    }
+    if(!ep&&nb.length){const lp2=pf2(nb[nb.length-1].c);ep=t1d?(t1p+lp2)/2:lp2;}
+
+    const out=ep>0.5?'win':ep<-0.5?'loss':'be';
+    const riskAmt=eq*P.riskPct;
+    const pnl=ep*(riskAmt*2/P.sl);
+
+    if(P.useFtmo&&(dayStartEq-(eq+pnl))/P.account>P.ftmoDaily){ftmoSk++;eqData.push({x:dk,y:eq});continue;}
+
+    eq+=pnl;pk=Math.max(pk,eq);const dd=(pk-eq)/pk*100;mdd=Math.max(mdd,dd);
+    pnls.push(pnl);
+    const mk=dk.slice(0,7),yy=dk.slice(0,4);
+    monthlyPnl[mk]=(monthlyPnl[mk]||0)+pnl;
+    if(!yrData[yy])yrData[yy]={w:0,l:0,be:0,pnl:0,t:0};
+    yrData[yy].pnl+=pnl;yrData[yy].t++;
+    if(out==='win'){wins++;gw+=pnl;wp+=ep;consec=0;yrData[yy].w++;}
+    else if(out==='loss'){losses++;gl+=Math.abs(pnl);lp+=Math.abs(ep);consec++;mc=Math.max(mc,consec);yrData[yy].l++;}
+    else{be++;consec=0;yrData[yy].be++;}
+    eqData.push({x:dk,y:eq});
+    tradeLog.push({dk,dir:ed,time:eb.dt.toISOString().slice(11,16),range:Math.round(rPips),pips:Math.round(ep),pnl:Math.round(pnl*100)/100,out,eq:Math.round(eq*100)/100});
+  }
+
+  prog(100,'Done.');
+  const total=wins+losses+be;
+  const wr=total?wins/total*100:0;
+  const pf=gl>0?gw/gl:0;
+  let sharpe=0;
+  if(pnls.length>1){const mu=pnls.reduce((a,b)=>a+b,0)/pnls.length;const sig=Math.sqrt(pnls.map(p=>(p-mu)**2).reduce((a,b)=>a+b,0)/(pnls.length-1));sharpe=sig>0?mu/sig*16:0;}
+
+  lastResults={wr,pf,net:eq-P.account,net_pct:(eq-P.account)/P.account*100,maxDD:mdd,sharpe,total,wins,losses,be,skipped:sk,ftmoSk,maxConsec:mc,avgW:wins?wp/wins:0,avgL:losses?lp/losses:0,monthlyPnl,yrData,eqData,tradeLog,P};
+  showResults(lastResults);
+  renderFTMO(lastResults);
+  document.getElementById('tab-results').style.display='';
+  document.getElementById('tab-ftmo-btn').style.display='';
+  document.getElementById('btn-run').disabled=false;
+  log(`Complete: ${total} trades | WR=${wr.toFixed(1)}% | PF=${pf.toFixed(2)} | Net=${(eq-P.account>=0?'+':'')}$${Math.round(eq-P.account)} | DD=${mdd.toFixed(1)}%`,'s');
+  sw('results');
+}
+
+// ── RESULTS DISPLAY ──
+function showResults(r){
+  const P=r.P;
+  const kpi=document.getElementById('kpi-row');
+  const col=v=>v>0?'g':v<0?'r':'';
+  kpi.innerHTML=[
+    {l:'Win Rate',v:r.wr.toFixed(1)+'%',c:r.wr>=50?'g':r.wr>=40?'a':'r'},
+    {l:'Profit Factor',v:r.pf.toFixed(2),c:r.pf>=1.5?'g':r.pf>=1.2?'a':'r'},
+    {l:'Net Return',v:(r.net>=0?'+':'')+r.net_pct.toFixed(1)+'%',c:col(r.net)},
+    {l:'Max Drawdown',v:r.maxDD.toFixed(1)+'%',c:r.maxDD<5?'g':r.maxDD<8?'a':'r'},
+    {l:'Sharpe',v:r.sharpe.toFixed(2),c:r.sharpe>=1.5?'g':r.sharpe>=1?'a':'r'},
+  ].map(k=>`<div class="card" style="text-align:center"><div class="ml">${k.l}</div><div class="mv ${k.c}">${k.v}</div></div>`).join('');
+
+  // Equity chart
+  const ctx=document.getElementById('eq-chart');
+  if(window._chart)window._chart.destroy();
+  window._chart=new Chart(ctx,{type:'line',data:{datasets:[{data:r.eqData.map(p=>({x:p.x,y:p.y})),borderColor:'#1a1a1a',borderWidth:1.5,pointRadius:0,fill:false,tension:0.1}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{type:'category',ticks:{maxTicksLimit:12,font:{size:10}},grid:{display:false}},y:{ticks:{font:{size:10},callback:v=>'$'+v.toLocaleString()},grid:{color:'#f0f0f0'}}}}});
+
+  // Yearly
+  const yr=document.getElementById('yr-grid');
+  yr.innerHTML='<table><thead><tr><th>Year</th><th>Trades</th><th>WR</th><th>P&L</th></tr></thead><tbody>'+
+    Object.keys(r.yrData).sort().map(y=>{const d=r.yrData[y];const w2=d.t?d.w/d.t*100:0;const ok=d.pnl>0;return`<tr><td>${y}</td><td>${d.t}</td><td style="color:${w2>=50?'#3B6D11':'#A32D2D'}">${w2.toFixed(0)}%</td><td style="color:${ok?'#3B6D11':'#A32D2D'}">${d.pnl>=0?'+':''}$${Math.abs(d.pnl).toFixed(0)}</td></tr>`;}).join('')+'</tbody></table>';
+
+  // Monthly heatmap
+  const hm=document.getElementById('mo-hm');
+  hm.innerHTML='';
+  for(const mk of Object.keys(r.monthlyPnl).sort()){
+    const v=r.monthlyPnl[mk];const pct=v/P.account*100;
+    const cell=document.createElement('div');
+    cell.style.cssText='border-radius:6px;padding:6px;text-align:center;font-size:11px;';
+    if(v>0){const i=Math.min(pct/8,1);cell.style.background=`rgba(59,109,17,${0.12+i*0.7})`;cell.style.color='#1a1a1a';}
+    else{const i=Math.min(Math.abs(pct)/5,1);cell.style.background=`rgba(226,75,74,${0.12+i*0.7})`;cell.style.color='#1a1a1a';}
+    cell.textContent=mk.replace('-',' ')+'\n'+(pct>=0?'+':'')+pct.toFixed(1)+'%';
+    cell.style.whiteSpace='pre';
+    hm.appendChild(cell);
+  }
+
+  // Trade log
+  const tbl=document.getElementById('trade-tbl');
+  tbl.innerHTML='<thead><tr><th>Date</th><th>Dir</th><th>Time</th><th>Range</th><th>Pips</th><th>P&L</th><th>Equity</th></tr></thead><tbody>'+
+    r.tradeLog.map(t=>`<tr><td>${t.dk}</td><td style="color:${t.dir==='BUY'?'#3B6D11':'#A32D2D'}">${t.dir}</td><td>${t.time}</td><td>${t.range}p</td><td style="color:${t.pips>0?'#3B6D11':t.pips<0?'#A32D2D':'#888'}">${t.pips>0?'+':''}${t.pips}p</td><td style="color:${t.pnl>=0?'#3B6D11':'#A32D2D'}">${t.pnl>=0?'+':''}$${t.pnl}</td><td>$${t.eq}</td></tr>`).join('')+'</tbody>';
+}
+
+// ── FTMO DASHBOARD ──
+function renderFTMO(r){
+  document.getElementById('no-ftmo').style.display='none';
+  document.getElementById('ftmo-body').style.display='block';
+  const P=r.P;
+  const pass=r.maxDD<10&&r.maxConsec<=6&&r.pf>=1.2;
+  const vEl=document.getElementById('ftmo-verdict');
+  vEl.className='alert '+(pass?'ok':'warn');
+  vEl.innerHTML=pass?`<strong>✓ FTMO COMPLIANT</strong> — DD ${r.maxDD.toFixed(1)}% (limit 10%) · MC ${r.maxConsec} · PF ${r.pf.toFixed(2)}`:
+    `<strong>⚠ REVIEW</strong> — DD ${r.maxDD.toFixed(1)}% · check risk sizing`;
+
+  const gc=document.getElementById('gauges');gc.innerHTML='';
+  [
+    {label:'Max DD',val:r.maxDD.toFixed(1)+'%',limit:'< 10%',pct:r.maxDD/10*100,ok:r.maxDD<5,warn:r.maxDD<8},
+    {label:'Profit Factor',val:r.pf.toFixed(2),limit:'> 1.3',pct:Math.min(r.pf/2*100,100),ok:r.pf>=1.5,warn:r.pf>=1.2},
+    {label:'Win Rate',val:r.wr.toFixed(1)+'%',limit:'> 40%',pct:Math.min(r.wr/80*100,100),ok:r.wr>=50,warn:r.wr>=40},
+    {label:'Consec Losses',val:r.maxConsec,limit:'≤ 6',pct:r.maxConsec/8*100,ok:r.maxConsec<=4,warn:r.maxConsec<=6},
+    {label:'Sharpe',val:r.sharpe.toFixed(2),limit:'> 1.5',pct:Math.min(r.sharpe/3*100,100),ok:r.sharpe>=1.5,warn:r.sharpe>=1},
+    {label:'All Yrs Profit',val:Object.values(r.yrData).every(y=>y.pnl>0)?'YES':'NO',limit:'Required',pct:Object.values(r.yrData).every(y=>y.pnl>0)?100:20,ok:Object.values(r.yrData).every(y=>y.pnl>0),warn:false},
+  ].forEach(g=>{
+    const col=g.ok?'#3B6D11':g.warn?'#EF9F27':'#E24B4A';
+    const el=document.createElement('div');el.className='gauge';
+    el.innerHTML=`<div class="gauge-label">${g.label}</div><div class="gauge-val" style="color:${col}">${g.val}</div><div class="gauge-limit">${g.limit}</div><div class="gauge-bar"><div class="gauge-fill" style="width:${Math.min(g.pct,100).toFixed(0)}%;background:${col}"></div></div>`;
+    gc.appendChild(el);
+  });
+
+  // Monthly heatmap
+  const mVals=Object.values(r.monthlyPnl);
+  const hm=document.getElementById('mo-heatmap');hm.innerHTML='';
+  for(const mk of Object.keys(r.monthlyPnl).sort()){
+    const v=r.monthlyPnl[mk];const pct=v/P.account*100;
+    const isTarget=pct>=7;const isGood=pct>=3;const isBad=pct<-2;
+    const bg=isTarget?'rgba(59,109,17,0.2)':isGood?'rgba(99,153,34,0.1)':isBad?'rgba(226,75,74,0.15)':'rgba(128,128,128,0.06)';
+    const box=document.createElement('div');
+    box.style.cssText=`background:${bg};border-radius:8px;padding:8px;text-align:center;border:0.5px solid ${isTarget?'#97C459':isBad?'#F09595':'#e0e0e0'}`;
+    box.innerHTML=`<div style="font-size:10px;color:#888">${mk}</div><div style="font-size:13px;font-weight:700;color:${isTarget?'#3B6D11':isBad?'#A32D2D':'#555'}">${pct>=0?'+':''}${pct.toFixed(1)}%</div><div style="font-size:10px">${isTarget?'★ FTMO':isGood?'✓':''}  </div>`;
+    hm.appendChild(box);
+  }
+
+  // ROR
+  const totalRisk=P.riskPct*2*100;
+  const consecToBreach=Math.max(1,Math.floor(8/totalRisk));
+  document.getElementById('ror').innerHTML=`
+    Risk per setup: <strong>${totalRisk.toFixed(1)}% total</strong> (${(P.riskPct*100).toFixed(1)}% × 2 legs)<br>
+    Consecutive losses to breach 8% DD: <strong style="color:${r.maxConsec<consecToBreach?'#3B6D11':'#E24B4A'}">${consecToBreach}</strong><br>
+    Worst streak in backtest: <strong>${r.maxConsec}</strong> (${Math.round(r.maxConsec/consecToBreach*100)}% of breach threshold)<br>
+    FTMO daily guard: <strong>${(P.ftmoDaily*100).toFixed(1)}%</strong> — activations: <strong>${r.ftmoSk}</strong><br>
+    <strong style="color:${r.maxConsec/consecToBreach<0.6?'#3B6D11':'#E24B4A'}">${r.maxConsec/consecToBreach<0.6?'✓ Safe margin — comfortable buffer to FTMO limit':'⚠ Monitor — streak approaching breach threshold'}</strong>
+  `;
+}
+</script>
+</body>
+</html>
