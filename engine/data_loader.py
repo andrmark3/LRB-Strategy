@@ -33,19 +33,20 @@ def parse_dt(raw: str) -> datetime | None:
     """Parse any datetime string into a naive UTC datetime."""
     raw = raw.strip()
     raw = re.sub(r"\s+(UTC|GMT|EST|EDT|CET|CEST)$", "", raw, flags=re.I)
+    # m is m.groups() — a 0-indexed tuple: m[0]=first group, m[1]=second, etc.
     patterns = [
         (r"^(\d{1,2})/(\d{1,2})/(\d{4})\s+(\d{2}:\d{2}(?::\d{2})?)",
-         lambda m: f"{m[3]}-{m[2].zfill(2)}-{m[1].zfill(2)}T{m[4]}"),
+         lambda m: f"{m[2]}-{m[1].zfill(2)}-{m[0].zfill(2)}T{m[3]}"),   # DD/MM/YYYY
         (r"^(\d{4})\.(\d{2})\.(\d{2})\s+(\d{2}:\d{2}(?::\d{2})?)",
-         lambda m: f"{m[1]}-{m[2]}-{m[3]}T{m[4]}"),
+         lambda m: f"{m[0]}-{m[1]}-{m[2]}T{m[3]}"),                      # YYYY.MM.DD (MT5)
         (r"^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}:\d{2}(?::\d{2})?)",
-         lambda m: f"{m[3]}-{m[2]}-{m[1]}T{m[4]}"),
+         lambda m: f"{m[2]}-{m[1]}-{m[0]}T{m[3]}"),                      # DD.MM.YYYY
     ]
     for pattern, builder in patterns:
         m = re.match(pattern, raw)
         if m:
             iso = builder(m.groups())
-            fmt = "%Y-%m-%dT%H:%M:%S" if iso.count(":") >= 3 else "%Y-%m-%dT%H:%M"
+            fmt = "%Y-%m-%dT%H:%M:%S" if iso.count(":") >= 2 else "%Y-%m-%dT%H:%M"
             try:
                 return datetime.strptime(iso, fmt)
             except ValueError:

@@ -12,7 +12,7 @@
 //| is not UTC (e.g. UTC+3 broker → set 3).                         |
 //+------------------------------------------------------------------+
 #property copyright   "LRB Strategy"
-#property version     "2.1.0"
+#property version     "2.10"
 #property indicator_chart_window
 #property indicator_buffers 0
 #property indicator_plots   0
@@ -36,8 +36,6 @@ input group "=== COLOURS ==="
 input color LON_BOX_COLOR     = clrCornflowerBlue; // London box fill colour
 input color NY_BOX_COLOR      = C'255,160,50';     // NY box fill colour  (orange)
 input color LON_LINE_COLOR    = clrSteelBlue;      // London high/low line colour
-input int   LON_TRANSPARENCY  = 80;                // 0=solid  100=invisible
-input int   NY_TRANSPARENCY   = 90;
 input double PIP_FACTOR       = 1.0;               // 1.0 for US30 (_Point=1.0). Set 10.0 if _Point=0.1
 
 //--- Object name prefix (all objects created by this indicator start with this)
@@ -142,11 +140,10 @@ void DrawDayBoxes(string tag,
    // --- London box ---
    string lon_name = OBJ_PREFIX + "LON_" + tag;
    if(ObjectCreate(0, lon_name, OBJ_RECTANGLE, 0, lon_t1, rh, lon_t2, rl)) {
-      ObjectSetInteger(0, lon_name, OBJPROP_COLOR,        LON_BOX_COLOR);
-      ObjectSetInteger(0, lon_name, OBJPROP_FILL,         true);
-      ObjectSetInteger(0, lon_name, OBJPROP_BACK,         true);
-      ObjectSetInteger(0, lon_name, OBJPROP_TRANSPARENCY, LON_TRANSPARENCY);
-      ObjectSetInteger(0, lon_name, OBJPROP_SELECTABLE,   false);
+      ObjectSetInteger(0, lon_name, OBJPROP_COLOR,      LON_BOX_COLOR);
+      ObjectSetInteger(0, lon_name, OBJPROP_FILL,        true);
+      ObjectSetInteger(0, lon_name, OBJPROP_BACK,        true);  // draws behind candles = visual transparency
+      ObjectSetInteger(0, lon_name, OBJPROP_SELECTABLE,  false);
       ObjectSetString(0,  lon_name, OBJPROP_TOOLTIP,
          StringFormat("London Range: %.1f – %.1f  (%.0fp)", rl, rh, rng_pips));
    }
@@ -188,21 +185,33 @@ void DrawDayBoxes(string tag,
 
    // --- NY session box ---
    if(ny_t1 > 0 && ny_t2 > ny_t1) {
-      // NY box extends vertically ± 50p around London range to show price room
-      double buf     = (rh - rl) * 0.5;
+      // Scan actual M1 bars to get the real NY-session high/low
+      double ny_high = rh, ny_low = rl; // fallback: London range bounds
+      MqlRates ny_bars[];
+      datetime scan_end = MathMin(ny_t2, TimeCurrent());
+      if(scan_end > ny_t1) {
+         int ny_n = CopyRates(_Symbol, PERIOD_M1, ny_t1, scan_end, ny_bars);
+         if(ny_n > 0) {
+            ny_high = ny_bars[0].high; ny_low = ny_bars[0].low;
+            for(int i = 1; i < ny_n; i++) {
+               ny_high = MathMax(ny_high, ny_bars[i].high);
+               ny_low  = MathMin(ny_low,  ny_bars[i].low);
+            }
+         }
+      }
+
       string ny_name = OBJ_PREFIX + "NY_" + tag;
-      if(ObjectCreate(0, ny_name, OBJ_RECTANGLE, 0, ny_t1, rh + buf, ny_t2, rl - buf)) {
-         ObjectSetInteger(0, ny_name, OBJPROP_COLOR,        NY_BOX_COLOR);
-         ObjectSetInteger(0, ny_name, OBJPROP_FILL,         true);
-         ObjectSetInteger(0, ny_name, OBJPROP_BACK,         true);
-         ObjectSetInteger(0, ny_name, OBJPROP_TRANSPARENCY, NY_TRANSPARENCY);
-         ObjectSetInteger(0, ny_name, OBJPROP_SELECTABLE,   false);
-         ObjectSetString(0,  ny_name, OBJPROP_TOOLTIP,      "NY Session (entry window)");
+      if(ObjectCreate(0, ny_name, OBJ_RECTANGLE, 0, ny_t1, ny_high, ny_t2, ny_low)) {
+         ObjectSetInteger(0, ny_name, OBJPROP_COLOR,      NY_BOX_COLOR);
+         ObjectSetInteger(0, ny_name, OBJPROP_FILL,        true);
+         ObjectSetInteger(0, ny_name, OBJPROP_BACK,        true);  // draws behind candles = visual transparency
+         ObjectSetInteger(0, ny_name, OBJPROP_SELECTABLE,  false);
+         ObjectSetString(0,  ny_name, OBJPROP_TOOLTIP,     "NY Session — actual high/low");
       }
 
       if(SHOW_LABELS) {
          string ny_lbl = OBJ_PREFIX + "NY_LBL_" + tag;
-         ObjectCreate(0, ny_lbl, OBJ_TEXT, 0, ny_t1, rh + buf);
+         ObjectCreate(0, ny_lbl, OBJ_TEXT, 0, ny_t1, ny_high);
          ObjectSetString(0,  ny_lbl, OBJPROP_TEXT,      "NY");
          ObjectSetInteger(0, ny_lbl, OBJPROP_COLOR,     NY_BOX_COLOR);
          ObjectSetInteger(0, ny_lbl, OBJPROP_FONTSIZE,  8);

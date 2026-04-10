@@ -50,7 +50,7 @@ def run_backtest(bars, tz, overrides=None):
     gw = gl = wp = lp = 0.0
     consec = mc = 0
     pnls = []; monthly = defaultdict(float)
-    yearly = defaultdict(lambda: {"w":0,"l":0,"be":0,"pnl":0.0,"t":0})
+    yearly = defaultdict(lambda: {"w":0,"l":0,"b":0,"pnl":0.0,"t":0})
     trades_log = []
     ny_start_min = get_ny_entry_start_min(sess)
 
@@ -67,6 +67,7 @@ def run_backtest(bars, tz, overrides=None):
         if not ok: skipped += 1; continue
         direction, _ = trend_filter(date, sd, dc, filt)
         if direction == "FLAT": skipped += 1; continue
+        allowed = "BUY" if direction == "UP" else "SELL"
         ok, _ = ftmo_max_dd_check(peak, eq, start, risk["ftmo_max_dd"])
         if not ok: skipped += 1; continue
 
@@ -76,12 +77,12 @@ def run_backtest(bars, tz, overrides=None):
         if len(ny) < 5: continue
 
         day_start_eq = eq
-        det = SweepDetector(rh, rl, direction, filt["confirm_bars"])
+        det = SweepDetector(rh, rl, allowed, filt["confirm_bars"])
         entry_bar = entry_dir = None
         for i, bar in enumerate(ny):
             result = det.update(i, bar) if filt["require_sweep"] else (
-                ("BUY", bar) if bar["c"] > rh and direction != "SELL" else
-                ("SELL", bar) if bar["c"] < rl and direction != "BUY" else None
+                ("BUY", bar) if bar["c"] > rh and allowed != "SELL" else
+                ("SELL", bar) if bar["c"] < rl and allowed != "BUY" else None
             )
             if result:
                 entry_dir, entry_bar = result; entry_idx = i; break
@@ -137,7 +138,7 @@ def print_results(r, account=10_000):
     print(f"  Trades={r['total']} W={r['wins']} L={r['losses']} BE={r['be']} Skip={r['skipped']}")
     for yr in sorted(r["yearly"]):
         d=r["yearly"][yr]; t=d["t"]
-        print(f"  {yr}: WR={d['w']/t*100:.0f}%  P&L={d['pnl']:+.0f}$  W={d['w']} L={d['l']} BE={d['be']}")
+        print(f"  {yr}: WR={d['w']/t*100:.0f}%  P&L={d['pnl']:+.0f}$  W={d['w']} L={d['l']} BE={d['b']}")
     print()
     for mk in sorted(r["monthly"]):
         v=r["monthly"][mk]; pct=v/account*100

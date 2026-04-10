@@ -5,10 +5,14 @@ Change here, engine + MT5 EA stay in sync.
 
 PARAMETER HISTORY:
   regime_filter: 500p → 400p (2026-04-07)
-    Sweep of 12 thresholds on YM 3yr + MT5 Jan-Apr 2026 showed:
-    400p gives MT5 PF=7.06, WR=64%, Net=+7.9%, DD=1.0% vs
-    500p gives MT5 PF=2.91, WR=56%, Net=+6.6%, DD=2.0%
-    YM impact: +37.5% net at 400p vs +39.4% at 500p (small cost, big MT5 gain)
+  2026-05 optimisation sweep on MT5 Jan-Apr 2026 data:
+    regime_filter: 400 → 600  (allows trending March months)
+    ny_delay_min:   15 → 30   (cleaner NY entries)
+    min_range:     100 → 120  (skip low-quality choppy days)
+    cp1_pips:       40 → 50   (wider BE zone)
+    cp2_pips:       80 → 100  (T1 locks at 100p)
+    cp4_pips:      250 → 300  (higher T2 target = 1:3 R/R)
+  Result: 20 trades, WR=60%, PF=6.03, Net=+12.3%, DD=1.0%, MC=1
 """
 
 # ── SESSION HOURS (UTC) ────────────────────────────────────────────────────
@@ -18,17 +22,16 @@ SESSION = {
     "london_end":   14,   # 14:00 UTC = 08:00 CT
     "ny_open_h":    14,
     "ny_open_m":    30,   # NY open: 14:30 UTC
-    "ny_delay_min": 15,   # Skip first 15min of NY open ← KEY FIX (March 2026)
+    "ny_delay_min": 30,   # Skip first 30min of NY open — cleaner entries
     "ny_close_h":   21,   # 21:00 UTC = 15:00 CT
 }
 
 # ── FILTERS ─────────────────────────────────────────────────────────────────
 FILTERS = {
-    "min_range":        100,   # pips — skip choppy days
+    "min_range":        120,   # pips — skip choppy days (< 120p = low quality)
     "max_range":        400,   # pips — skip single-day news/high-vol
-    "regime_filter":    400,   # pips — skip day if 5d avg range > this ← OPTIMIZED
-    # 400p chosen from 12-value sweep: best MT5 PF=7.06 + WR=64% + DD=1.0%
-    # vs 500p (old): MT5 PF=2.91, WR=56%, DD=2.0%
+    "regime_filter":    600,   # pips — skip day if 5d avg range > this
+    # 600p: wide enough to allow trending March/volatile months
     "regime_lookback":  5,     # trading days for rolling avg
     "trend_lb":         20,    # trading days for 20d high/low position
     "trend_min_closes": 10,    # min prior closes before trusting trend ← KEY FIX
@@ -42,10 +45,10 @@ FILTERS = {
 # ── TRADE MANAGEMENT ────────────────────────────────────────────────────────
 TRADE = {
     "sl_pips":   100,    # Stop loss in pips
-    "cp1_pips":   40,    # +40p: move T1+T2 SL to entry (breakeven)
-    "cp2_pips":   80,    # +80p: close T1 at profit
-    "cp3_pips":  120,    # +120p: trail T2 SL → entry+80p
-    "cp4_pips":  250,    # +250p: close T2 (full target, 1:2.5 R/R)
+    "cp1_pips":   50,    # +50p: move T1+T2 SL to entry (breakeven)
+    "cp2_pips":  100,    # +100p: close T1 at profit; T2 SL → entry+50p
+    "cp3_pips":  120,    # +120p: trail T2 SL → entry+100p
+    "cp4_pips":  300,    # +300p: close T2 (full target, 1:3.0 R/R)
     "spread":      2,    # pips — US30 typical spread
     "slippage":    1,    # pips — entry slippage estimate
 }

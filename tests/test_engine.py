@@ -40,26 +40,30 @@ def test_sweep_no_entry_without_sweep():
         assert r is None
     print("✓ SweepDetector: no entry without sweep")
 
+# Fixed test config — independent of config.py changes
+TEST_CFG = {"sl_pips": 100, "cp1_pips": 40, "cp2_pips": 80, "cp3_pips": 120, "cp4_pips": 250, "spread": 2, "slippage": 1}
+
 def test_trade_cp4():
     entry={"c":44000,"dt":datetime(2026,1,1,15,0)}
-    bars=[{"h":44060,"l":44000,"c":44050},
-          {"h":44100,"l":44000,"c":44090},
-          {"h":44300,"l":44000,"c":44260}]
-    r=run_trade(entry,"BUY",bars)
-    assert r.exit_reason=="CP4 full target"
+    # en = 44003 (BUY+adj). cp1=40 → t2_sl=44003. cp2=80 → t2_sl=44043. cp3=120 → t2_sl=44083. cp4=250 → exit.
+    bars=[{"h":44060,"l":44020,"c":44050},   # cp1 hit (pips=47), low safe
+          {"h":44100,"l":44050,"c":44091},   # cp2 hit (pips=88), low > 44043
+          {"h":44300,"l":44100,"c":44260}]   # cp4 hit (pips=257), low > 44083
+    r=run_trade(entry,"BUY",bars,TEST_CFG)
+    assert r.exit_reason=="CP4 full target", f"Expected CP4, got {r.exit_reason}"
     assert abs(r.exit_pips-165.0)<2, f"Expected ~165p, got {r.exit_pips}"
     print("✓ trade_manager CP4")
 
 def test_trade_sl():
     entry={"c":44000,"dt":datetime(2026,1,1,15,0)}
-    r=run_trade(entry,"BUY",[{"h":44000,"l":43895,"c":43910}])
+    r=run_trade(entry,"BUY",[{"h":44000,"l":43895,"c":43910}],TEST_CFG)
     assert r.outcome=="loss" and r.exit_reason=="SL hit"
     print("✓ trade_manager SL")
 
 def test_trade_be_stop():
     entry={"c":44000,"dt":datetime(2026,1,1,15,0)}
     bars=[{"h":44060,"l":44000,"c":44050},{"h":44005,"l":43995,"c":43998}]
-    r=run_trade(entry,"BUY",bars)
+    r=run_trade(entry,"BUY",bars,TEST_CFG)
     assert r.cp1_hit and r.exit_reason=="BE stop"
     print("✓ trade_manager BE stop")
 
