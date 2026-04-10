@@ -2,15 +2,17 @@
 //| LRB_V2_EA.mq5 — London Range Breakout V2                        |
 //| Semi-automated: detects setup, alerts human, manages trade       |
 //| Logic mirrors engine/filters.py + engine/trade_manager.py       |
-//| v2.2.0 — full chart visuals + rich checkpoint alerts             |
+//| v2.3.0 — bug fixes for MT5 backtester parity with HTML           |
 //|                                                                  |
 //| HOW TO USE:                                                      |
-//|   Strategy Tester : set SEMI_AUTO = false (auto-entries)         |
-//|   Live / Demo     : set SEMI_AUTO = true  (human confirms entry) |
+//|   Strategy Tester : SEMI_AUTO can be true or false — the EA      |
+//|                     auto-detects the tester and always enters.   |
+//|   Live / Demo     : SEMI_AUTO = true  (human confirms entry)     |
+//|                     SEMI_AUTO = false (fully automated)          |
 //|                                                                  |
 //| PIP_FACTOR: 1.0 for US30 — 1 pip = 1 price unit (1 Dow point)   |
-//|   _Point is irrelevant; only PIP_FACTOR determines pip size.      |
-//|   Override only if your broker uses fractional units (rare).      |
+//|   _Point is irrelevant; only PIP_FACTOR determines pip size.     |
+//|   Override only if your broker uses fractional units (rare).     |
 //+------------------------------------------------------------------+
 #property copyright "LRB Strategy"
 #property version   "2.30"
@@ -235,7 +237,10 @@ void OnWaitingSweep(MqlDateTime &t) {
 
    if(g_confirm_cnt >= CONFIRM_BARS) {
       string dir   = can_buy ? "BUY" : "SELL";
-      double price = SymbolInfoDouble(_Symbol, can_buy ? SYMBOL_ASK : SYMBOL_BID)
+      // Match HTML engine: entry = bid + (spread+slip) for BUY, bid - (spread+slip) for SELL
+      // Using BID as the reference (≈ bar close), same as HTML's  en = eb.c + adj
+      // Do NOT use SYMBOL_ASK for BUY — ask already includes spread, would double-count it
+      double price = SymbolInfoDouble(_Symbol, SYMBOL_BID)
                      + (SPREAD_PIPS + SLIP_PIPS) * (can_buy ? PipToPrice(1) : -PipToPrice(1));
 
       SendSetupAlert(price, dir);
@@ -706,18 +711,20 @@ void ExecuteEntry(double price, string dir) {
    bool ok1 = false, ok2 = false;
    if(dir == "BUY") {
       ok1 = trade.Buy(lots,  _Symbol, price, sl, 0, "LRB_T1");
-      if(ok1) g_t1_ticket = trade.ResultOrder();
+      if(ok1) { g_t1_ticket = trade.ResultOrder(); g_entry = trade.ResultPrice(); }
       ok2 = trade.Buy(lots,  _Symbol, price, sl, 0, "LRB_T2");
       if(ok2) g_t2_ticket = trade.ResultOrder();
    } else {
       ok1 = trade.Sell(lots, _Symbol, price, sl, 0, "LRB_T1");
-      if(ok1) g_t1_ticket = trade.ResultOrder();
+      if(ok1) { g_t1_ticket = trade.ResultOrder(); g_entry = trade.ResultPrice(); }
       ok2 = trade.Sell(lots, _Symbol, price, sl, 0, "LRB_T2");
       if(ok2) g_t2_ticket = trade.ResultOrder();
    }
 
-   g_entry     = price;
-   g_t2_sl     = sl;
+   // Fallback: if fill price unavailable (e.g. order queued), use requested price
+   if(g_entry == 0) g_entry = price;
+   // g_t2_sl tracks checkpoint movement — base it on actual fill, not requested price
+   g_t2_sl     = dir == "BUY" ? g_entry - sl_dist : g_entry + sl_dist;
    g_cp1_hit   = false;
    g_t1_closed = false;
    g_cp3_hit   = false;
