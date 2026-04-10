@@ -2,7 +2,7 @@
 //| LRB_V2_EA.mq5 — London Range Breakout V2                        |
 //| Semi-automated: detects setup, alerts human, manages trade       |
 //| Logic mirrors engine/filters.py + engine/trade_manager.py       |
-//| v2.3.0 — bug fixes for MT5 backtester parity with HTML           |
+//| v2.4.0 — fix bar-index bugs causing zero trades in backtester    |
 //|                                                                  |
 //| HOW TO USE:                                                      |
 //|   Strategy Tester : SEMI_AUTO can be true or false — the EA      |
@@ -15,7 +15,7 @@
 //|   Override only if your broker uses fractional units (rare).     |
 //+------------------------------------------------------------------+
 #property copyright "LRB Strategy"
-#property version   "2.30"
+#property version   "2.40"
 #property strict
 
 #include <LRB/LRB_V2_EA.mqh>
@@ -133,8 +133,11 @@ void OnTick() {
    if(cur_bars == g_bars_seen) return;
    g_bars_seen = cur_bars;
 
-   // Continuously update London range and box while London is open
-   if(t.hour >= LON_START_H && t.hour < LON_END_H
+   // Continuously update London range and box while London is open.
+   // Extend to <= LON_END_H so the 14:00 bar-open event captures the
+   // just-completed 13:59 bar (the last London bar).  UpdateLondonRange()
+   // internally verifies that bar[1] actually falls within London hours.
+   if(t.hour >= LON_START_H && t.hour <= LON_END_H
       && t.day_of_week > 0 && t.day_of_week < 6)
       UpdateLondonRange();
 
@@ -208,22 +211,24 @@ void OnWaitingSweep(MqlDateTime &t) {
       return;
    }
 
-   double hi = iHigh(_Symbol, PERIOD_M1, 0);
-   double lo = iLow(_Symbol,  PERIOD_M1, 0);
-   double cl = iClose(_Symbol, PERIOD_M1, 0);
+   // Use bar index 1 — the bar that just COMPLETED (index 0 is the brand-new
+   // bar that only has its opening tick and no useful H/L/C yet).
+   double hi = iHigh(_Symbol, PERIOD_M1, 1);
+   double lo = iLow(_Symbol,  PERIOD_M1, 1);
+   double cl = iClose(_Symbol, PERIOD_M1, 1);
 
    // Detect liquidity sweeps (fake-break beyond range, close back inside)
    if(!g_bull_sweep && hi > g_rh && cl <= g_rh) {
       g_bull_sweep = true;
       g_sweep_bar  = g_bars_seen;
-      DrawSweepMarker(false, iTime(_Symbol, PERIOD_M1, 0), g_rh);
-      Print("BULL sweep (spike above range) at ", TimeToString(TimeCurrent()));
+      DrawSweepMarker(false, iTime(_Symbol, PERIOD_M1, 1), g_rh);
+      Print("BULL sweep (spike above range) at ", TimeToString(iTime(_Symbol, PERIOD_M1, 1)));
    }
    if(!g_bear_sweep && lo < g_rl && cl >= g_rl) {
       g_bear_sweep = true;
       g_sweep_bar  = g_bars_seen;
-      DrawSweepMarker(true, iTime(_Symbol, PERIOD_M1, 0), g_rl);
-      Print("BEAR sweep (spike below range) at ", TimeToString(TimeCurrent()));
+      DrawSweepMarker(true, iTime(_Symbol, PERIOD_M1, 1), g_rl);
+      Print("BEAR sweep (spike below range) at ", TimeToString(iTime(_Symbol, PERIOD_M1, 1)));
    }
 
    bool can_buy  = g_bull_sweep && g_direction != "SELL";
@@ -303,8 +308,15 @@ void ManageTrades(MqlDateTime &t) {
       return;
    }
 
-   double cur  = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   double pips = (g_direction == "BUY" ? cur - g_entry : g_entry - cur) / PipToPrice(1);
+   double cur      = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   // Use bar[1] H/L extremes for CP threshold checks — this mirrors how the
+   // HTML backtester detects CP hits (bar.hi / bar.lo), catching intrabar moves.
+   double bar1_hi  = iHigh(_Symbol, PERIOD_M1, 1);
+   double bar1_lo  = iLow(_Symbol,  PERIOD_M1, 1);
+   double pips     = (g_direction == "BUY"
+                      ? bar1_hi - g_entry   // best intrabar price reached for BUY
+                      : g_entry - bar1_lo)  // best intrabar price reached for SELL
+                     / PipToPrice(1);
 
    // CP1 +40p — move both SLs to breakeven
    if(pips >= CP1_PIPS && !g_cp1_hit) {
@@ -362,9 +374,9 @@ void ManageTrades(MqlDateTime &t) {
       return;
    }
 
-   // Session force-exit at NY close
+   // Session force-exit at NY close — use current BID not the intrabar extreme
    if(t.hour >= NY_CLOSE_H) {
-      double exit_pips = pips;
+      double exit_pips = (g_direction == "BUY" ? cur - g_entry : g_entry - cur) / PipToPrice(1);
       string outcome   = exit_pips > 0.5 ? "WIN" : exit_pips < -0.5 ? "LOSS" : "BREAKEVEN";
       CloseAll();
       Notify(StringFormat(
@@ -806,10 +818,20 @@ void CloseAll() {
 // RANGE BUILDING
 //======================================================================
 
-// Called every London bar — updates g_rh, g_rl and redraws box
+// Called on each new bar during/just-after London session.
+// Reads bar index 1 (the bar that just completed) for accurate H/L.
+// Internally verifies the bar falls inside London hours — safe to call
+// at the 14:00 bar-open to capture the final 13:59 London bar.
 void UpdateLondonRange() {
-   double hi = iHigh(_Symbol, PERIOD_M1, 0);
-   double lo = iLow(_Symbol,  PERIOD_M1, 0);
+   // Guard: only include bars whose time is inside the London session
+   datetime prev_time = iTime(_Symbol, PERIOD_M1, 1);
+   MqlDateTime prev_t;
+   TimeToStruct(prev_time, prev_t);
+   int prev_utc = ((prev_t.hour - BROKER_UTC_OFFSET) % 24 + 24) % 24;
+   if(prev_utc < LON_START_H || prev_utc >= LON_END_H) return;
+
+   double hi = iHigh(_Symbol, PERIOD_M1, 1);
+   double lo = iLow(_Symbol,  PERIOD_M1, 1);
 
    if(g_rh == 0) { g_rh = hi; g_rl = lo; }
    else          { g_rh = MathMax(g_rh, hi); g_rl = MathMin(g_rl, lo); }
