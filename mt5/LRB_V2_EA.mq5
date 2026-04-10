@@ -2,7 +2,7 @@
 //| LRB_V2_EA.mq5 — London Range Breakout V2                        |
 //| Semi-automated: detects setup, alerts human, manages trade       |
 //| Logic mirrors engine/filters.py + engine/trade_manager.py       |
-//| v2.4.0 — fix bar-index bugs causing zero trades in backtester    |
+//| v2.5.0 — fix 5 bugs: sweep/confirm split, CP/SL checks, entry    |
 //|                                                                  |
 //| HOW TO USE:                                                      |
 //|   Strategy Tester : SEMI_AUTO can be true or false — the EA      |
@@ -15,7 +15,7 @@
 //|   Override only if your broker uses fractional units (rare).     |
 //+------------------------------------------------------------------+
 #property copyright "LRB Strategy"
-#property version   "2.40"
+#property version   "2.50"
 #property strict
 
 #include <LRB/LRB_V2_EA.mqh>
@@ -79,7 +79,8 @@ enum EAState { IDLE, WAITING_SWEEP, WAITING_HUMAN, MANAGING };
 EAState  g_state           = IDLE;
 double   g_rh              = 0,    g_rl = 0;
 string   g_direction       = "";
-int      g_sweep_bar       = -1,   g_confirm_cnt = 0, g_alert_bar = -1;
+int      g_bull_sweep_bar  = -1,   g_bear_sweep_bar = -1, g_alert_bar = -1;
+int      g_bull_cnt        = 0,    g_bear_cnt = 0;          // separate confirm counters
 bool     g_bull_sweep      = false, g_bear_sweep = false;
 bool     g_cp1_hit         = false, g_t1_closed = false, g_cp3_hit = false;
 double   g_entry           = 0,    g_t2_sl = 0;
@@ -217,36 +218,50 @@ void OnWaitingSweep(MqlDateTime &t) {
    double lo = iLow(_Symbol,  PERIOD_M1, 1);
    double cl = iClose(_Symbol, PERIOD_M1, 1);
 
-   // Detect liquidity sweeps (fake-break beyond range, close back inside)
+   // Detect liquidity sweeps (fake-break beyond range, close back inside).
+   // Each direction tracks its own sweep bar independently (HTML: separate sweepI per dir).
    if(!g_bull_sweep && hi > g_rh && cl <= g_rh) {
-      g_bull_sweep = true;
-      g_sweep_bar  = g_bars_seen;
+      g_bull_sweep    = true;
+      g_bull_sweep_bar = g_bars_seen;
       DrawSweepMarker(false, iTime(_Symbol, PERIOD_M1, 1), g_rh);
       Print("BULL sweep (spike above range) at ", TimeToString(iTime(_Symbol, PERIOD_M1, 1)));
    }
    if(!g_bear_sweep && lo < g_rl && cl >= g_rl) {
-      g_bear_sweep = true;
-      g_sweep_bar  = g_bars_seen;
+      g_bear_sweep    = true;
+      g_bear_sweep_bar = g_bars_seen;
       DrawSweepMarker(true, iTime(_Symbol, PERIOD_M1, 1), g_rl);
       Print("BEAR sweep (spike below range) at ", TimeToString(iTime(_Symbol, PERIOD_M1, 1)));
    }
 
    bool can_buy  = g_bull_sweep && g_direction != "SELL";
    bool can_sell = g_bear_sweep && g_direction != "BUY";
-   if((!can_buy && !can_sell) || g_bars_seen <= g_sweep_bar) return;
+   if(!can_buy && !can_sell) return;
 
-   // Count confirmation bars closing beyond range
-   if(can_buy  && cl > g_rh) g_confirm_cnt++;
-   else if(can_sell && cl < g_rl) g_confirm_cnt++;
-   else g_confirm_cnt = 0;
+   // --- BUY confirmation (HTML: bullCnt — separate from bearCnt) ---
+   // Must be at least 1 bar after the bull-sweep bar (mirrors HTML: i > sweepI)
+   if(can_buy && g_bars_seen > g_bull_sweep_bar) {
+      if(cl > g_rh)  g_bull_cnt++;
+      else           g_bull_cnt = 0;  // HTML: else bullCnt=0
+   }
 
-   if(g_confirm_cnt >= CONFIRM_BARS) {
-      string dir   = can_buy ? "BUY" : "SELL";
-      // Match HTML engine: entry = bid + (spread+slip) for BUY, bid - (spread+slip) for SELL
-      // Using BID as the reference (≈ bar close), same as HTML's  en = eb.c + adj
-      // Do NOT use SYMBOL_ASK for BUY — ask already includes spread, would double-count it
-      double price = SymbolInfoDouble(_Symbol, SYMBOL_BID)
-                     + (SPREAD_PIPS + SLIP_PIPS) * (can_buy ? PipToPrice(1) : -PipToPrice(1));
+   // --- SELL confirmation (HTML: bearCnt) ---
+   if(can_sell && g_bars_seen > g_bear_sweep_bar) {
+      if(cl < g_rl)  g_bear_cnt++;
+      else           g_bear_cnt = 0;
+   }
+
+   // --- Trigger entry: BUY preferred over SELL if both ready (HTML: BUY checked first) ---
+   string dir = "";
+   if(can_buy  && g_bull_cnt >= CONFIRM_BARS) dir = "BUY";
+   if(dir == "" && can_sell && g_bear_cnt >= CONFIRM_BARS) dir = "SELL";
+   if(dir == "") return;
+
+   {
+      bool is_buy  = (dir == "BUY");
+      // Entry price = bar[1] close + spread+slip adjustment (matches HTML: en = eb.c + adj)
+      // Use iClose(1) not live SYMBOL_BID — bar[1] is the completed confirmation bar.
+      double price = iClose(_Symbol, PERIOD_M1, 1)
+                     + (SPREAD_PIPS + SLIP_PIPS) * (is_buy ? PipToPrice(1) : -PipToPrice(1));
 
       SendSetupAlert(price, dir);
       g_alert_bar = g_bars_seen;
@@ -259,7 +274,7 @@ void OnWaitingSweep(MqlDateTime &t) {
          ExecuteEntry(price, dir);
          // g_state is set to MANAGING inside ExecuteEntry
       }
-   }
+   } // end entry block
 }
 
 //----------------------------------------------------------------------
@@ -295,28 +310,38 @@ void OnWaitingHuman(MqlDateTime &t) {
 
 //----------------------------------------------------------------------
 void ManageTrades(MqlDateTime &t) {
-   // All positions closed externally (SL hit by broker or user closed manually)
+   // Positions closed by broker SL or user — should be handled by sl_hit check above,
+   // but guard here in case of external close or order rejections.
    if(!HasOurPositions()) {
-      if(!g_t1_closed) {
-         // T2 SL was hit (or both closed externally)
-         string outcome = g_cp1_hit ? "BREAKEVEN STOP" : "STOP LOSS";
-         double loss_p  = g_cp1_hit ? 0 : SL_PIPS;
-         Notify(StringFormat("⛔ LRB %s HIT\n%s | Entry: %.1f | Loss: ~%.0fp",
-                outcome, g_direction, g_entry, loss_p));
-      }
       g_state = IDLE;
       return;
    }
 
    double cur      = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   // Use bar[1] H/L extremes for CP threshold checks — this mirrors how the
-   // HTML backtester detects CP hits (bar.hi / bar.lo), catching intrabar moves.
-   double bar1_hi  = iHigh(_Symbol, PERIOD_M1, 1);
-   double bar1_lo  = iLow(_Symbol,  PERIOD_M1, 1);
-   double pips     = (g_direction == "BUY"
-                      ? bar1_hi - g_entry   // best intrabar price reached for BUY
-                      : g_entry - bar1_lo)  // best intrabar price reached for SELL
-                     / PipToPrice(1);
+   // HTML uses bar.c (close) for CP threshold checks:
+   //   p = ed==='BUY' ? b.c - en : en - b.c
+   // HTML uses bar.l (BUY) / bar.h (SELL) for SL-hit checks:
+   //   slHit = ed==='BUY' ? b.l <= t2sl : b.h >= t2sl
+   double bar1_cl  = iClose(_Symbol, PERIOD_M1, 1);
+   double bar1_lo  = iLow(_Symbol,   PERIOD_M1, 1);
+   double bar1_hi  = iHigh(_Symbol,  PERIOD_M1, 1);
+
+   // SL check: use intrabar low (BUY) or high (SELL) — matches HTML b.l / b.h
+   bool sl_hit = (g_direction == "BUY") ? bar1_lo <= g_t2_sl : bar1_hi >= g_t2_sl;
+   if(sl_hit) {
+      // SL hit — close all positions; the broker SL order will handle it in live mode.
+      // In backtester we force-close so the log is accurate.
+      CloseAll();
+      double raw = PriceToPips(g_direction == "BUY" ? g_t2_sl - g_entry : g_entry - g_t2_sl);
+      string outcome = g_cp1_hit ? "BREAKEVEN STOP" : "STOP LOSS";
+      Notify(StringFormat("⛔ LRB %s HIT\n%s | Entry: %.1f | SL: %.1f | Pips: ~%.0f",
+             outcome, g_direction, g_entry, g_t2_sl, raw));
+      g_state = IDLE;
+      return;
+   }
+
+   // CP progress: use bar CLOSE (matches HTML: p = b.c - en)
+   double pips = (g_direction == "BUY" ? bar1_cl - g_entry : g_entry - bar1_cl) / PipToPrice(1);
 
    // CP1 +40p — move both SLs to breakeven
    if(pips >= CP1_PIPS && !g_cp1_hit) {
@@ -374,9 +399,9 @@ void ManageTrades(MqlDateTime &t) {
       return;
    }
 
-   // Session force-exit at NY close — use current BID not the intrabar extreme
+   // Session force-exit at NY close — use bar[1] close (matches HTML: nb[last].c)
    if(t.hour >= NY_CLOSE_H) {
-      double exit_pips = (g_direction == "BUY" ? cur - g_entry : g_entry - cur) / PipToPrice(1);
+      double exit_pips = (g_direction == "BUY" ? bar1_cl - g_entry : g_entry - bar1_cl) / PipToPrice(1);
       string outcome   = exit_pips > 0.5 ? "WIN" : exit_pips < -0.5 ? "LOSS" : "BREAKEVEN";
       CloseAll();
       Notify(StringFormat(
@@ -889,7 +914,8 @@ void ResetDay() {
    g_state           = IDLE;
    g_rh              = 0; g_rl = 0;
    g_direction       = "";
-   g_sweep_bar       = -1; g_confirm_cnt = 0; g_alert_bar = -1;
+   g_bull_sweep_bar  = -1; g_bear_sweep_bar = -1; g_alert_bar = -1;
+   g_bull_cnt        = 0;  g_bear_cnt = 0;
    g_bull_sweep      = false; g_bear_sweep = false;
    g_cp1_hit         = false; g_t1_closed = false; g_cp3_hit = false;
    g_t1_ticket       = 0; g_t2_ticket = 0;
