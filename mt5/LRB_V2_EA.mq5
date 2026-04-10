@@ -2,7 +2,7 @@
 //| LRB_V2_EA.mq5 — London Range Breakout V2                        |
 //| Semi-automated: detects setup, alerts human, manages trade       |
 //| Logic mirrors engine/filters.py + engine/trade_manager.py       |
-//| v2.5.0 — fix 5 bugs: sweep/confirm split, CP/SL checks, entry    |
+//| v2.5.1 — exact HTML sweep parity: single sweepI + cross-reset cnt  |
 //|                                                                  |
 //| HOW TO USE:                                                      |
 //|   Strategy Tester : SEMI_AUTO can be true or false — the EA      |
@@ -15,7 +15,7 @@
 //|   Override only if your broker uses fractional units (rare).     |
 //+------------------------------------------------------------------+
 #property copyright "LRB Strategy"
-#property version   "2.50"
+#property version   "2.51"
 #property strict
 
 #include <LRB/LRB_V2_EA.mqh>
@@ -79,6 +79,10 @@ enum EAState { IDLE, WAITING_SWEEP, WAITING_HUMAN, MANAGING };
 EAState  g_state           = IDLE;
 double   g_rh              = 0,    g_rl = 0;
 string   g_direction       = "";
+// sweepI tracks the last bar where EITHER a bull or bear sweep occurred
+// (HTML: single sweepI, overwritten by the later of the two sweeps).
+// bull/bear counts cross-reset each other exactly as in HTML.
+int      g_sweep_bar       = -1;   // latest of bull or bear sweep bar (HTML: sweepI)
 int      g_bull_sweep_bar  = -1,   g_bear_sweep_bar = -1, g_alert_bar = -1;
 int      g_bull_cnt        = 0,    g_bear_cnt = 0;          // separate confirm counters
 bool     g_bull_sweep      = false, g_bear_sweep = false;
@@ -219,16 +223,19 @@ void OnWaitingSweep(MqlDateTime &t) {
    double cl = iClose(_Symbol, PERIOD_M1, 1);
 
    // Detect liquidity sweeps (fake-break beyond range, close back inside).
-   // Each direction tracks its own sweep bar independently (HTML: separate sweepI per dir).
+   // HTML: single sweepI that gets overwritten by WHICHEVER sweep fires later.
+   // So g_sweep_bar = max(bull_sweep_bar, bear_sweep_bar) = the most-recent sweep.
    if(!g_bull_sweep && hi > g_rh && cl <= g_rh) {
       g_bull_sweep    = true;
       g_bull_sweep_bar = g_bars_seen;
+      g_sweep_bar      = g_bars_seen;   // shared sweepI — overwrite with latest
       DrawSweepMarker(false, iTime(_Symbol, PERIOD_M1, 1), g_rh);
       Print("BULL sweep (spike above range) at ", TimeToString(iTime(_Symbol, PERIOD_M1, 1)));
    }
    if(!g_bear_sweep && lo < g_rl && cl >= g_rl) {
       g_bear_sweep    = true;
       g_bear_sweep_bar = g_bars_seen;
+      g_sweep_bar      = g_bars_seen;   // shared sweepI — overwrite with latest
       DrawSweepMarker(true, iTime(_Symbol, PERIOD_M1, 1), g_rl);
       Print("BEAR sweep (spike below range) at ", TimeToString(iTime(_Symbol, PERIOD_M1, 1)));
    }
@@ -237,20 +244,18 @@ void OnWaitingSweep(MqlDateTime &t) {
    bool can_sell = g_bear_sweep && g_direction != "BUY";
    if(!can_buy && !can_sell) return;
 
-   // --- BUY confirmation (HTML: bullCnt — separate from bearCnt) ---
-   // Must be at least 1 bar after the bull-sweep bar (mirrors HTML: i > sweepI)
-   if(can_buy && g_bars_seen > g_bull_sweep_bar) {
-      if(cl > g_rh)  g_bull_cnt++;
-      else           g_bull_cnt = 0;  // HTML: else bullCnt=0
-   }
+   // Guard: must be PAST the latest sweep bar (HTML: i > sweepI where sweepI = latest of both)
+   if(g_bars_seen <= g_sweep_bar) return;
 
-   // --- SELL confirmation (HTML: bearCnt) ---
-   if(can_sell && g_bars_seen > g_bear_sweep_bar) {
-      if(cl < g_rl)  g_bear_cnt++;
-      else           g_bear_cnt = 0;
-   }
+   // Confirmation counters — cross-reset exactly as HTML:
+   //   if(bar.c>rHigh) { bullCnt++; bearCnt=0; }
+   //   else if(bar.c<rLow) { bearCnt++; bullCnt=0; }
+   //   else { bullCnt=0; bearCnt=0; }
+   if(cl > g_rh)       { g_bull_cnt++; g_bear_cnt = 0; }
+   else if(cl < g_rl)  { g_bear_cnt++; g_bull_cnt = 0; }
+   else                { g_bull_cnt = 0; g_bear_cnt = 0; }
 
-   // --- Trigger entry: BUY preferred over SELL if both ready (HTML: BUY checked first) ---
+   // Trigger entry: BUY checked first (HTML order), then SELL
    string dir = "";
    if(can_buy  && g_bull_cnt >= CONFIRM_BARS) dir = "BUY";
    if(dir == "" && can_sell && g_bear_cnt >= CONFIRM_BARS) dir = "SELL";
@@ -914,6 +919,7 @@ void ResetDay() {
    g_state           = IDLE;
    g_rh              = 0; g_rl = 0;
    g_direction       = "";
+   g_sweep_bar       = -1;
    g_bull_sweep_bar  = -1; g_bear_sweep_bar = -1; g_alert_bar = -1;
    g_bull_cnt        = 0;  g_bear_cnt = 0;
    g_bull_sweep      = false; g_bear_sweep = false;
