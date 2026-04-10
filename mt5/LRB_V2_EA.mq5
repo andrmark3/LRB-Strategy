@@ -8,11 +8,12 @@
 //|   Strategy Tester : set SEMI_AUTO = false (auto-entries)         |
 //|   Live / Demo     : set SEMI_AUTO = true  (human confirms entry) |
 //|                                                                  |
-//| PIP_FACTOR: 1.0 for standard US30 (_Point=1.0, price ~43000)    |
-//|             10.0 if your broker uses _Point=0.1                  |
+//| PIP_FACTOR: 1.0 for US30 — 1 pip = 1 price unit (1 Dow point)   |
+//|   _Point is irrelevant; only PIP_FACTOR determines pip size.      |
+//|   Override only if your broker uses fractional units (rare).      |
 //+------------------------------------------------------------------+
 #property copyright "LRB Strategy"
-#property version   "2.2.0"
+#property version   "2.30"
 #property strict
 
 #include <LRB/LRB_V2_EA.mqh>
@@ -55,7 +56,7 @@ input group "=== RISK MANAGEMENT ==="
 input double RISK_PCT_LEG     = 0.5;  // % of account per leg. FTMO Ph1=1.0, Ph2=0.5
 input double FTMO_DAILY_GUARD = 4.0;  // halt if day loss > this %
 input double FTMO_MAX_DD      = 8.0;  // halt if total DD > this %
-input double PIP_FACTOR       = 1.0;  // 1.0 standard US30. Set 10.0 if _Point=0.1
+input double PIP_FACTOR       = 1.0;  // 1 pip = PIP_FACTOR price units. 1.0 for US30 (1 Dow point). Broker _Point is irrelevant.
 
 //=== MODE ===
 input group "=== MODE ==="
@@ -66,8 +67,6 @@ input int    CONFIRM_TIMEOUT  = 3;    // bars to wait for human confirmation
 input group "=== CHART VISUALS ==="
 input color  LON_BOX_COLOR    = clrCornflowerBlue; // London session box colour
 input color  NY_BOX_COLOR     = clrSandyBrown;     // NY session box colour (orange)
-input int    LON_TRANSPARENCY = 80;                 // 0=solid 100=invisible
-input int    NY_TRANSPARENCY  = 88;
 input bool   DRAW_CP_LINES    = true;               // draw CP level lines on chart
 input bool   DRAW_ENTRY_ARROW = true;               // draw entry arrow on chart
 
@@ -98,7 +97,7 @@ int OnInit() {
    trade.SetDeviationInPoints(30);
    Print("LRB V2 EA v", EA_VERSION, " loaded");
    Print("Symbol:", _Symbol, " _Point:", _Point, " PIP_FACTOR:", PIP_FACTOR,
-         " → 1 pip = ", _Point * PIP_FACTOR, " price units");
+         " → 1 pip = ", PIP_FACTOR, " price units (broker _Point not used)");
    Print("Mode: ", SEMI_AUTO ? "SEMI-AUTO (human confirms entry)" : "FULLY AUTO (use for backtesting)");
    ResetDay();
    // Rebuild today's range if we attach mid-session
@@ -242,7 +241,9 @@ void OnWaitingSweep(MqlDateTime &t) {
       SendSetupAlert(price, dir);
       g_alert_bar = g_bars_seen;
 
-      if(SEMI_AUTO) {
+      // In Strategy Tester there is no human to confirm — always auto-enter.
+      // In live/demo mode, respect the SEMI_AUTO input.
+      if(SEMI_AUTO && !MQLInfoInteger(MQL_TESTER)) {
          g_state = WAITING_HUMAN;
       } else {
          ExecuteEntry(price, dir);
@@ -386,6 +387,7 @@ void ManageTrades(MqlDateTime &t) {
 //======================================================================
 
 // --- Regime Filter: 5-day rolling average London range (M1 bars, same as Python)
+// Matches HTML: days.slice(di-5, di) — uses the 5 days BEFORE today, excludes today.
 double CalcRegimeAvgM1() {
    double daily_ranges[];
    int    days_found  = 0;
@@ -394,6 +396,10 @@ double CalcRegimeAvgM1() {
    double day_hi      = 0, day_lo = DBL_MAX;
    bool   has_london  = false;
 
+   // Exclude today so the average matches Python/HTML (prev 5 days only)
+   MqlDateTime now_t; TimeToStruct(TimeCurrent(), now_t);
+   string today_str = StringFormat("%04d.%02d.%02d", now_t.year, now_t.mon, now_t.day);
+
    for(int i = 0; i < total_m1 && days_found < REGIME_LOOKBACK; i++) {
       datetime bt = iTime(_Symbol, PERIOD_M1, i);
       MqlDateTime td; TimeToStruct(bt, td);
@@ -401,7 +407,8 @@ double CalcRegimeAvgM1() {
 
       string day_str = StringFormat("%04d.%02d.%02d", td.year, td.mon, td.day);
       if(day_str != cur_day) {
-         if(cur_day != "" && has_london) {
+         // Save previous day — but never save today (matches HTML di-slice logic)
+         if(cur_day != "" && has_london && cur_day != today_str) {
             ArrayResize(daily_ranges, days_found + 1);
             daily_ranges[days_found] = PriceToPips(day_hi - day_lo);
             days_found++;
@@ -424,12 +431,14 @@ double CalcRegimeAvgM1() {
 }
 
 // --- Trend Filter: 20-day high/low position ratio (M1-derived daily closes, same as Python)
+// Iterates bars newest→oldest. We capture the FIRST bar encountered per day (= that day's
+// most-recent close), matching HTML dc = dayMap.get(d).slice(-1)[0].c
 string CalcTrend() {
    double daily_closes[];
    int    days_found = 0;
    int    total_m1   = iBars(_Symbol, PERIOD_M1);
    string cur_day    = "";
-   double last_close = 0;
+   double day_newest_close = 0; // close of the most-recent bar seen for cur_day
 
    for(int i = 0; i < total_m1; i++) {
       datetime bt = iTime(_Symbol, PERIOD_M1, i);
@@ -438,16 +447,18 @@ string CalcTrend() {
 
       string day_str = StringFormat("%04d.%02d.%02d", td.year, td.mon, td.day);
       if(day_str != cur_day) {
-         if(cur_day != "" && last_close > 0) {
+         // Save the previously accumulated day — day_newest_close was set when we
+         // FIRST encountered that day (= its most-recent bar since we go newest→oldest)
+         if(cur_day != "" && day_newest_close > 0) {
             ArrayResize(daily_closes, days_found + 1);
-            daily_closes[days_found] = last_close;
+            daily_closes[days_found] = day_newest_close;
             days_found++;
             if(days_found > TREND_LB + 2) break;
          }
-         cur_day    = day_str;
-         last_close = 0;
+         cur_day = day_str;
+         day_newest_close = iClose(_Symbol, PERIOD_M1, i); // first encounter = newest bar
       }
-      last_close = iClose(_Symbol, PERIOD_M1, i);
+      // Do NOT overwrite day_newest_close — we only want the first (newest) bar
    }
 
    if(days_found < TREND_MIN_CLOSES) return "FLAT";
@@ -490,11 +501,10 @@ void DrawLondonBox() {
    } else {
       // Create new box
       ObjectCreate(0, name, OBJ_RECTANGLE, 0, g_lon_start_dt, g_rh, t2, g_rl);
-      ObjectSetInteger(0, name, OBJPROP_COLOR,        LON_BOX_COLOR);
-      ObjectSetInteger(0, name, OBJPROP_FILL,         true);
-      ObjectSetInteger(0, name, OBJPROP_BACK,         true);
-      ObjectSetInteger(0, name, OBJPROP_TRANSPARENCY, LON_TRANSPARENCY);
-      ObjectSetInteger(0, name, OBJPROP_SELECTABLE,   false);
+      ObjectSetInteger(0, name, OBJPROP_COLOR,      LON_BOX_COLOR);
+      ObjectSetInteger(0, name, OBJPROP_FILL,        true);
+      ObjectSetInteger(0, name, OBJPROP_BACK,        true);  // draws behind candles = visual transparency
+      ObjectSetInteger(0, name, OBJPROP_SELECTABLE,  false);
 
       string lbl = "LRB_LON_LBL_" + g_day_tag;
       ObjectCreate(0, lbl, OBJ_TEXT, 0, g_lon_start_dt, g_rh);
@@ -514,11 +524,10 @@ void DrawNYBox() {
    double   buf      = PipToPrice(60);
 
    ObjectCreate(0, name, OBJ_RECTANGLE, 0, g_ny_start_dt, g_rh + buf, ny_end, g_rl - buf);
-   ObjectSetInteger(0, name, OBJPROP_COLOR,        NY_BOX_COLOR);
-   ObjectSetInteger(0, name, OBJPROP_FILL,         true);
-   ObjectSetInteger(0, name, OBJPROP_BACK,         true);
-   ObjectSetInteger(0, name, OBJPROP_TRANSPARENCY, NY_TRANSPARENCY);
-   ObjectSetInteger(0, name, OBJPROP_SELECTABLE,   false);
+   ObjectSetInteger(0, name, OBJPROP_COLOR,      NY_BOX_COLOR);
+   ObjectSetInteger(0, name, OBJPROP_FILL,        true);
+   ObjectSetInteger(0, name, OBJPROP_BACK,        true);  // draws behind candles = visual transparency
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE,  false);
 
    string lbl = "LRB_NY_LBL_" + g_day_tag;
    ObjectCreate(0, lbl, OBJ_TEXT, 0, g_ny_start_dt, g_rh + buf);
@@ -680,15 +689,15 @@ void LogSkip(string reason) {
 
 void ExecuteEntry(double price, string dir) {
    double bal   = AccountInfoDouble(ACCOUNT_BALANCE);
-   double risk$ = bal * RISK_PCT_LEG / 100.0;
+   double risk_usd = bal * RISK_PCT_LEG / 100.0;
 
-   // Robust lot calculation: risk$ = lots * (SL_distance / tick_size) * tick_value
+   // Robust lot calculation: risk_usd = lots * (SL_distance / tick_size) * tick_value
    double tick_val  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
    double tick_size = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
    double sl_dist   = PipToPrice(SL_PIPS);
    double lots      = 0.01;
    if(tick_val > 0 && tick_size > 0 && sl_dist > 0)
-      lots = NormalizeDouble(risk$ / ((sl_dist / tick_size) * tick_val), 2);
+      lots = NormalizeDouble(risk_usd / ((sl_dist / tick_size) * tick_val), 2);
    lots = MathMax(lots, SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN));
    lots = MathMin(lots, SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX));
 
@@ -835,8 +844,10 @@ void ScanTodayRange() {
 // UTILITY
 //======================================================================
 
-double PipToPrice(double pips)   { return pips * _Point * PIP_FACTOR; }
-double PriceToPips(double price) { return price / (_Point * PIP_FACTOR); }
+// 1 pip = PIP_FACTOR price units. Broker _Point is NOT used — the Python engine
+// and HTML backtester define 1 pip = 1 price unit for US30 regardless of _Point.
+double PipToPrice(double pips)   { return pips * PIP_FACTOR; }
+double PriceToPips(double price) { return price / PIP_FACTOR; }
 
 bool IsNYActive(MqlDateTime &t) {
    int min = t.hour * 60 + t.min;
