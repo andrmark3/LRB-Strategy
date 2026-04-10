@@ -131,7 +131,7 @@ tr:last-child td{border-bottom:none}
   <div class="tabs">
     <button class="tab active" onclick="sw('setup')">Setup</button>
     <button class="tab" onclick="sw('run')">Run Backtest</button>
-    <button class="tab" onclick="sw('results')" id="tab-results" style="display:none">📊 Results</button>
+    <button class="tab" onclick="sw('results')" id="tab-results-btn" style="display:none">📊 Results</button>
     <button class="tab" onclick="sw('ftmo')" id="tab-ftmo-btn" style="display:none">🏆 FTMO</button>
     <button class="tab" onclick="sw('trades')" id="tab-trades-btn" style="display:none">🗓 Trades</button>
   </div>
@@ -229,7 +229,7 @@ tr:last-child td{border-bottom:none}
   <!-- RESULTS TAB -->
   <div id="tab-results" class="sec">
     <div class="g5" style="margin-bottom:14px" id="kpi-row"></div>
-    <div class="cw"><h3>Equity Curve</h3><canvas class="eq-chart" id="eq-chart"></canvas></div>
+    <div class="cw"><h3>Equity Curve</h3><div style="position:relative;height:220px"><canvas id="eq-chart"></canvas></div></div>
     <div class="cw"><h3>Monthly P&amp;L</h3><div class="mo-grid" id="mo-grid"></div></div>
     <div class="cw last"><h3>Yearly Breakdown</h3><div id="yr-grid"></div></div>
   </div>
@@ -505,11 +505,11 @@ function engine(bars,P){
     if(closes.length<P.trendMinCloses)return 'FLAT';
     const hi=Math.max(...closes),lo=Math.min(...closes),rng=hi-lo;
     if(rng<1)return 'FLAT';
-    const pos=Math.max(0,Math.min(1,(dc.get(dk)||lo-lo)/rng));
+    const pos=Math.max(0,Math.min(1,((dc.get(dk)??lo)-lo)/rng));
     return pos>0.60?'UP':pos<0.40?'DOWN':'FLAT';
   }
 
-  let eq=P.account,pk=P.account,mdd=0;
+  let eq=P.account,pk=P.account,mdd=0,dayStartEq=P.account;
   let wins=0,losses=0,be=0,sk=0;
   let gw=0,gl=0,wp=0,lp=0,mc=0,consec=0,pnls=[];
   const monthly={},yrData={};
@@ -522,6 +522,7 @@ function engine(bars,P){
     const db=dayMap.get(dk);
     if(P.useWknd&&[0,6].includes(new Date(dk+'T12:00Z').getUTCDay()))continue;
 
+    dayStartEq=eq;
     const lon=db.filter(b=>{const h=b.dt.getUTCHours();return h>=P.lonStart&&h<P.lonEnd;});
     if(lon.length<10){eqData.push({x:dk,y:eq});continue;}
 
@@ -592,7 +593,7 @@ function engine(bars,P){
     const out=ep>0.5?'win':ep<-0.5?'loss':'be';
     const pnl=ep*(eq*P.riskPct*2/P.sl);
 
-    if(P.useFtmo&&(eq-P.account*P.ftmoDaily)-pnl<-P.account*P.ftmoDaily){sk++;eqData.push({x:dk,y:eq});continue;}
+    if(P.useFtmo){const dailyLoss=dayStartEq-(eq+pnl);if(dailyLoss/P.account>P.ftmoDaily){sk++;eqData.push({x:dk,y:eq});continue;}}
 
     eq+=pnl;pk=Math.max(pk,eq);
     const dd=(pk-eq)/pk*100;mdd=Math.max(mdd,dd);

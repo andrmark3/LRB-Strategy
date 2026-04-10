@@ -3,6 +3,9 @@
 //+------------------------------------------------------------------+
 #include <Trade/Trade.mqh>
 
-#define PIP_FACTOR   10.0    // US30: 1 pip = 10 points
+// Magic number — identifies all orders/positions placed by this EA
 #define EA_MAGIC     20261
-#define EA_VERSION   "2.0.1"
+#define EA_VERSION   "2.2.0"
+
+// MAGIC_COMMENT is used as the position comment, distinguishing T1 and T2
+#define MAGIC_COMMENT "LRB_V2"
