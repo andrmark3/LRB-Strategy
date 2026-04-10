@@ -15,7 +15,7 @@
 #property version   "2.2.0"
 #property strict
 
-#include "LRB_V2_EA.mqh"
+#include <LRB/LRB_V2_EA.mqh>
 
 //=== SESSION HOURS (all in UTC — adjust BROKER_UTC_OFFSET if needed) ===
 input group "=== SESSION HOURS (UTC) ==="
