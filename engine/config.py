@@ -5,14 +5,18 @@ Change here, engine + MT5 EA stay in sync.
 
 PARAMETER HISTORY:
   regime_filter: 500p → 400p (2026-04-07)
-  2026-05 optimisation sweep on MT5 Jan-Apr 2026 data:
-    regime_filter: 400 → 600  (allows trending March months)
-    ny_delay_min:   15 → 30   (cleaner NY entries)
-    min_range:     100 → 120  (skip low-quality choppy days)
-    cp1_pips:       40 → 50   (wider BE zone)
-    cp2_pips:       80 → 100  (T1 locks at 100p)
-    cp4_pips:      250 → 300  (higher T2 target = 1:3 R/R)
-  Result: 20 trades, WR=60%, PF=6.03, Net=+12.3%, DD=1.0%, MC=1
+  2026-05 v2.6.0 overfitting experiment (REVERTED in v2.7.0):
+    regime_filter: 400 → 600  (overfit to 4-month MT5 window — REVERTED)
+    ny_delay_min:   15 → 30   (overfit — REVERTED)
+    min_range:     100 → 120  (overfit — REVERTED)
+    cp1_pips:       40 → 50   (overfit — REVERTED)
+    cp2_pips:       80 → 100  (overfit — REVERTED)
+    cp4_pips:      250 → 300  (overfit — REVERTED)
+  2026-05 v2.7.0 cross-dataset validation (3 datasets, weighted sweep):
+    All params reverted to published v2.x values.
+    Cross-validated results: YM 5yr +37.5% PF=1.50, MT5 4mo +6.9% PF=3.87,
+    USA30 7mo +5.4% PF=1.57 — ALL 3 datasets PASS with original params.
+    v2.6.0 overfitting confirmed: only 1/3 datasets passed with regime=600.
 """
 
 # ── SESSION HOURS (UTC) ────────────────────────────────────────────────────
@@ -22,19 +26,19 @@ SESSION = {
     "london_end":   14,   # 14:00 UTC = 08:00 CT
     "ny_open_h":    14,
     "ny_open_m":    30,   # NY open: 14:30 UTC
-    "ny_delay_min": 30,   # Skip first 30min of NY open — cleaner entries
+    "ny_delay_min": 15,   # Skip first 15min of NY open
     "ny_close_h":   21,   # 21:00 UTC = 15:00 CT
 }
 
 # ── FILTERS ─────────────────────────────────────────────────────────────────
 FILTERS = {
-    "min_range":        120,   # pips — skip choppy days (< 120p = low quality)
+    "min_range":        100,   # pips — skip choppy days
     "max_range":        400,   # pips — skip single-day news/high-vol
-    "regime_filter":    600,   # pips — skip day if 5d avg range > this
-    # 600p: wide enough to allow trending March/volatile months
+    "regime_filter":    400,   # pips — skip day if 5d avg range > this
+    # 400p: validated robust across 5yr+ data (regime=600 was overfit to 4mo)
     "regime_lookback":  5,     # trading days for rolling avg
     "trend_lb":         20,    # trading days for 20d high/low position
-    "trend_min_closes": 10,    # min prior closes before trusting trend ← KEY FIX
+    "trend_min_closes": 10,    # min prior closes before trusting trend
     "trend_up_pos":     0.60,  # price > 60% of 20d range → BUY only
     "trend_dn_pos":     0.40,  # price < 40% of 20d range → SELL only
     "confirm_bars":     1,     # bars beyond range to confirm breakout
@@ -45,10 +49,10 @@ FILTERS = {
 # ── TRADE MANAGEMENT ────────────────────────────────────────────────────────
 TRADE = {
     "sl_pips":   100,    # Stop loss in pips
-    "cp1_pips":   50,    # +50p: move T1+T2 SL to entry (breakeven)
-    "cp2_pips":  100,    # +100p: close T1 at profit; T2 SL → entry+50p
-    "cp3_pips":  120,    # +120p: trail T2 SL → entry+100p
-    "cp4_pips":  300,    # +300p: close T2 (full target, 1:3.0 R/R)
+    "cp1_pips":   40,    # +40p: move T1+T2 SL to entry (breakeven)
+    "cp2_pips":   80,    # +80p: close T1 at profit; T2 SL → entry+40p
+    "cp3_pips":  120,    # +120p: trail T2 SL → entry+80p
+    "cp4_pips":  250,    # +250p: close T2 (full target, 1:2.5 R/R)
     "spread":      2,    # pips — US30 typical spread
     "slippage":    1,    # pips — entry slippage estimate
 }
@@ -76,3 +80,4 @@ TIMEZONE_PRESETS = {
     "utc": {"london_start": 8,  "london_end": 14, "ny_open_h": 14, "ny_close_h": 21},
     "ny":  {"london_start": 3,  "london_end": 9,  "ny_open_h": 9,  "ny_close_h": 16},
 }
+

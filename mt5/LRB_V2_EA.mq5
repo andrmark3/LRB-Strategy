@@ -2,7 +2,7 @@
 //| LRB_V2_EA.mq5 — London Range Breakout V2                        |
 //| Semi-automated: detects setup, alerts human, manages trade       |
 //| Logic mirrors engine/filters.py + engine/trade_manager.py       |
-//| v2.6.0 — volume step fix, param optimisation (cp1=50,cp2=100,cp4=300)|
+//| v2.7.0 — cross-validated params reverted (regime=400, delay=15, cp1=40)|
 //|                                                                  |
 //| HOW TO USE:                                                      |
 //|   Strategy Tester : SEMI_AUTO can be true or false — the EA      |
@@ -15,7 +15,7 @@
 //|   Override only if your broker uses fractional units (rare).     |
 //+------------------------------------------------------------------+
 #property copyright "LRB Strategy"
-#property version   "2.60"
+#property version   "2.70"
 #property strict
 
 #include <LRB/LRB_V2_EA.mqh>
@@ -26,15 +26,15 @@ input int    LON_START_H      = 8;    // London open  08:00 UTC
 input int    LON_END_H        = 14;   // London close 14:00 UTC
 input int    NY_OPEN_H        = 14;   // NY open      14:30 UTC
 input int    NY_OPEN_M        = 30;
-input int    NY_DELAY_MIN     = 30;   // Skip first 30 min of NY open
+input int    NY_DELAY_MIN     = 15;   // Skip first 15 min of NY open
 input int    NY_CLOSE_H       = 21;   // Force-exit   21:00 UTC
 input int    BROKER_UTC_OFFSET= 0;    // Hours to add to convert UTC -> broker time
 
 //=== FILTERS ===
 input group "=== FILTERS (mirror config.py) ==="
-input int    MIN_RANGE        = 120;  // pips — skip choppy days
+input int    MIN_RANGE        = 100;  // pips — skip choppy days
 input int    MAX_RANGE        = 400;  // pips — skip news/high-vol days
-input int    REGIME_THRESHOLD = 600;  // pips — skip if 5d avg > this
+input int    REGIME_THRESHOLD = 400;  // pips — skip if 5d avg > this
 input int    REGIME_LOOKBACK  = 5;    // trading days for rolling avg
 input int    TREND_LB         = 20;   // trading days for 20d trend
 input int    TREND_MIN_CLOSES = 10;   // min closes before trusting trend (KEY FIX)
@@ -46,10 +46,10 @@ input bool   REQUIRE_SWEEP    = true; // require fake-break before entry
 //=== TRADE MANAGEMENT ===
 input group "=== TRADE MANAGEMENT (mirror config.py) ==="
 input int    SL_PIPS          = 100;  // Stop loss
-input int    CP1_PIPS         = 50;   // +50p: both SLs → breakeven
-input int    CP2_PIPS         = 100;  // +100p: close T1; T2 SL → entry+50
+input int    CP1_PIPS         = 40;   // +40p: both SLs → breakeven
+input int    CP2_PIPS         = 80;   // +80p: close T1; T2 SL → entry+40
 input int    CP3_PIPS         = 120;  // +120p: trail T2 SL → entry+100
-input int    CP4_PIPS         = 300;  // +300p: close T2 (full target 1:3)
+input int    CP4_PIPS         = 250;  // +250p: close T2 (full target 1:2.5)
 input int    SPREAD_PIPS      = 2;    // typical US30 spread
 input int    SLIP_PIPS        = 1;    // entry slippage estimate
 
