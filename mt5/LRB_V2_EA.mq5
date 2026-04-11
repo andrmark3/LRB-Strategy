@@ -2,7 +2,7 @@
 //| LRB_V2_EA.mq5 — London Range Breakout V2                        |
 //| Semi-automated: detects setup, alerts human, manages trade       |
 //| Logic mirrors engine/filters.py + engine/trade_manager.py       |
-//| v2.81 — audit: fixed CalcRegimeAvgM1 UTC offset + 10-bar min     |
+//| v2.82 — auto-detect broker UTC offset; no manual config needed    |
 //|                                                                  |
 //| HOW TO USE:                                                      |
 //|   Strategy Tester : SEMI_AUTO can be true or false — the EA      |
@@ -15,7 +15,7 @@
 //|   Override only if your broker uses fractional units (rare).     |
 //+------------------------------------------------------------------+
 #property copyright "LRB Strategy"
-#property version   "2.81"
+#property version   "2.82"
 #property strict
 
 #include <LRB/LRB_V2_EA.mqh>
@@ -28,7 +28,7 @@ input int    NY_OPEN_H        = 14;   // NY open      14:30 UTC
 input int    NY_OPEN_M        = 30;
 input int    NY_DELAY_MIN     = 15;   // Skip first 15 min of NY open
 input int    NY_CLOSE_H       = 21;   // Force-exit   21:00 UTC
-input int    BROKER_UTC_OFFSET= 0;    // Hours to add to convert UTC -> broker time
+input int    BROKER_UTC_OFFSET= 0;    // Override UTC offset (0 = auto-detect from MT5 server time)
 
 //=== FILTERS ===
 input group "=== FILTERS (mirror config.py) ==="
@@ -96,16 +96,46 @@ datetime g_ny_start_dt     = 0;
 bool     g_assessment_sent = false;
 string   g_day_tag         = "";   // "YYYYMMDD" used as suffix for chart object names
 
+// Actual UTC offset in use — auto-detected in OnInit, overridable via BROKER_UTC_OFFSET input.
+// Most EU brokers run at UTC+2 (winter) or UTC+3 (summer). Auto-detection reads MT5's own
+// TimeGMT() vs TimeCurrent() delta so you never need to set this manually.
+int g_utc_offset = 0;
+
 CTrade trade;
 
 //+------------------------------------------------------------------+
 int OnInit() {
    trade.SetExpertMagicNumber(EA_MAGIC);
    trade.SetDeviationInPoints(30);
+
+   // --- Auto-detect broker UTC offset ---
+   // TimeGMT() = true UTC; TimeCurrent() = broker server time.
+   // Difference reveals the broker's timezone without any manual config.
+   int auto_offset = (int)MathRound((double)(TimeCurrent() - TimeGMT()) / 3600.0);
+   if(BROKER_UTC_OFFSET != 0)
+      g_utc_offset = BROKER_UTC_OFFSET;   // manual override takes priority
+   else
+      g_utc_offset = auto_offset;          // use auto-detected value
+
+   if(BROKER_UTC_OFFSET != 0 && BROKER_UTC_OFFSET != auto_offset)
+      Print("⚠ BROKER_UTC_OFFSET input=", BROKER_UTC_OFFSET,
+            " differs from auto-detected=", auto_offset,
+            " — using input value. Remove override to use auto-detection.");
+
    Print("LRB V2 EA v", EA_VERSION, " loaded");
-   Print("Symbol:", _Symbol, " _Point:", _Point, " PIP_FACTOR:", PIP_FACTOR,
-         " → 1 pip = ", PIP_FACTOR, " price units (broker _Point not used)");
-   Print("Mode: ", SEMI_AUTO ? "SEMI-AUTO (human confirms entry)" : "FULLY AUTO (use for backtesting)");
+   Print(StringFormat("UTC offset: g_utc_offset=%d (auto-detected=%d, input=%d)",
+         g_utc_offset, auto_offset, BROKER_UTC_OFFSET));
+   Print(StringFormat("Session (UTC): London %02d:00-%02d:00 | NY open %02d:%02d + %dmin delay = %02d:%02d | Close %02d:00",
+         LON_START_H, LON_END_H,
+         NY_OPEN_H, NY_OPEN_M, NY_DELAY_MIN,
+         (NY_OPEN_H * 60 + NY_OPEN_M + NY_DELAY_MIN) / 60,
+         (NY_OPEN_H * 60 + NY_OPEN_M + NY_DELAY_MIN) % 60,
+         NY_CLOSE_H));
+   Print(StringFormat("Broker time now: %s | UTC equivalent: %s",
+         TimeToString(TimeCurrent()), TimeToString(TimeGMT())));
+   Print("Symbol:", _Symbol, " PIP_FACTOR:", PIP_FACTOR,
+         " | Mode: ", SEMI_AUTO ? "SEMI-AUTO" : "FULLY AUTO");
+
    ResetDay();
    // Rebuild today's range if we attach mid-session
    ScanTodayRange();
@@ -125,7 +155,7 @@ void OnTick() {
    MqlDateTime t; TimeToStruct(now, t);
 
    // Adjust to UTC if broker is offset
-   int utc_hour = ((t.hour - BROKER_UTC_OFFSET) % 24 + 24) % 24;
+   int utc_hour = ((t.hour - g_utc_offset) % 24 + 24) % 24;
    t.hour = utc_hour;
 
    // Day reset at London open
@@ -436,7 +466,7 @@ void ManageTrades(MqlDateTime &t) {
 // --- Regime Filter: 5-day rolling average London range (M1 bars, same as Python)
 // Matches HTML: days.slice(di-5, di) — uses the 5 days BEFORE today, excludes today.
 // HTML requires lon.length >= 10 per day; only days with >= 10 London bars count.
-// Bar times are in broker local time — apply BROKER_UTC_OFFSET to get UTC for London check.
+// Bar times are in broker local time — apply g_utc_offset to convert to UTC for London check.
 double CalcRegimeAvgM1() {
    double daily_ranges[];
    int    days_found  = 0;
@@ -468,7 +498,7 @@ double CalcRegimeAvgM1() {
       }
 
       // Convert broker time → UTC before comparing with LON_START_H / LON_END_H
-      int bar_utc = ((td.hour - BROKER_UTC_OFFSET) % 24 + 24) % 24;
+      int bar_utc = ((td.hour - g_utc_offset) % 24 + 24) % 24;
       if(bar_utc >= LON_START_H && bar_utc < LON_END_H) {
          day_hi  = MathMax(day_hi, iHigh(_Symbol, PERIOD_M1, i));
          day_lo  = MathMin(day_lo, iLow(_Symbol,  PERIOD_M1, i));
@@ -866,7 +896,7 @@ void UpdateLondonRange() {
    datetime prev_time = iTime(_Symbol, PERIOD_M1, 1);
    MqlDateTime prev_t;
    TimeToStruct(prev_time, prev_t);
-   int prev_utc = ((prev_t.hour - BROKER_UTC_OFFSET) % 24 + 24) % 24;
+   int prev_utc = ((prev_t.hour - g_utc_offset) % 24 + 24) % 24;
    if(prev_utc < LON_START_H || prev_utc >= LON_END_H) return;
 
    double hi = iHigh(_Symbol, PERIOD_M1, 1);
@@ -881,7 +911,7 @@ void UpdateLondonRange() {
 // On EA attach: scan historical M1 bars to rebuild today's London range
 void ScanTodayRange() {
    MqlDateTime now_t; TimeToStruct(TimeCurrent(), now_t);
-   int utc_hour = ((now_t.hour - BROKER_UTC_OFFSET) % 24 + 24) % 24;
+   int utc_hour = ((now_t.hour - g_utc_offset) % 24 + 24) % 24;
 
    // Only relevant if we're inside or past London session
    if(utc_hour < LON_START_H) return;
@@ -895,7 +925,7 @@ void ScanTodayRange() {
       if(tbar.year != now_t.year || tbar.mon != now_t.mon || tbar.day != now_t.day) break;
 
       // Only London session bars
-      int bar_utc = ((tbar.hour - BROKER_UTC_OFFSET) % 24 + 24) % 24;
+      int bar_utc = ((tbar.hour - g_utc_offset) % 24 + 24) % 24;
       if(bar_utc < LON_START_H || bar_utc >= LON_END_H) continue;
 
       g_rh = MathMax(g_rh, iHigh(_Symbol, PERIOD_M1, i));
@@ -941,9 +971,9 @@ void ResetDay() {
    MqlDateTime t; TimeToStruct(TimeCurrent(), t);
    g_day_tag      = StringFormat("%04d%02d%02d", t.year, t.mon, t.day);
    g_lon_start_dt = StringToTime(StringFormat("%04d.%02d.%02d %02d:00",
-                       t.year, t.mon, t.day, LON_START_H + BROKER_UTC_OFFSET));
+                       t.year, t.mon, t.day, LON_START_H + g_utc_offset));
    g_ny_start_dt  = StringToTime(StringFormat("%04d.%02d.%02d %02d:%02d",
                        t.year, t.mon, t.day,
-                       NY_OPEN_H + BROKER_UTC_OFFSET,
+                       NY_OPEN_H + g_utc_offset,
                        NY_OPEN_M + NY_DELAY_MIN));
 }
