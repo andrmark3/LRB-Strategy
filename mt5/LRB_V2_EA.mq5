@@ -2,7 +2,7 @@
 //| LRB_V2_EA.mq5 — London Range Breakout V2                        |
 //| Semi-automated: detects setup, alerts human, manages trade       |
 //| Logic mirrors engine/filters.py + engine/trade_manager.py       |
-//| v2.8.0 — FTMO optimised: cp2=100, cp4=350 (3-dataset validated)  |
+//| v2.81 — audit: fixed CalcRegimeAvgM1 UTC offset + 10-bar min     |
 //|                                                                  |
 //| HOW TO USE:                                                      |
 //|   Strategy Tester : SEMI_AUTO can be true or false — the EA      |
@@ -15,7 +15,7 @@
 //|   Override only if your broker uses fractional units (rare).     |
 //+------------------------------------------------------------------+
 #property copyright "LRB Strategy"
-#property version   "2.80"
+#property version   "2.81"
 #property strict
 
 #include <LRB/LRB_V2_EA.mqh>
@@ -359,7 +359,7 @@ void ManageTrades(MqlDateTime &t) {
          CP1_PIPS, g_entry, g_direction));
    }
 
-   // CP2 +80p — close T1, trail T2 SL to entry+40p
+   // CP2 +100p — close T1, trail T2 SL to entry+40p  (CP2_PIPS=100)
    if(pips >= CP2_PIPS && !g_t1_closed) {
       g_t1_closed = true;
       CloseT1();
@@ -435,13 +435,15 @@ void ManageTrades(MqlDateTime &t) {
 
 // --- Regime Filter: 5-day rolling average London range (M1 bars, same as Python)
 // Matches HTML: days.slice(di-5, di) — uses the 5 days BEFORE today, excludes today.
+// HTML requires lon.length >= 10 per day; only days with >= 10 London bars count.
+// Bar times are in broker local time — apply BROKER_UTC_OFFSET to get UTC for London check.
 double CalcRegimeAvgM1() {
    double daily_ranges[];
    int    days_found  = 0;
    int    total_m1    = iBars(_Symbol, PERIOD_M1);
    string cur_day     = "";
    double day_hi      = 0, day_lo = DBL_MAX;
-   bool   has_london  = false;
+   int    lon_bars    = 0;   // count London-session bars per day (HTML: lon.length >= 10)
 
    // Exclude today so the average matches Python/HTML (prev 5 days only)
    MqlDateTime now_t; TimeToStruct(TimeCurrent(), now_t);
@@ -454,20 +456,23 @@ double CalcRegimeAvgM1() {
 
       string day_str = StringFormat("%04d.%02d.%02d", td.year, td.mon, td.day);
       if(day_str != cur_day) {
-         // Save previous day — but never save today (matches HTML di-slice logic)
-         if(cur_day != "" && has_london && cur_day != today_str) {
+         // Save previous day — require >= 10 London bars (HTML: lon.length >= 10)
+         // and never save today (matches HTML di-slice logic)
+         if(cur_day != "" && lon_bars >= 10 && cur_day != today_str) {
             ArrayResize(daily_ranges, days_found + 1);
             daily_ranges[days_found] = PriceToPips(day_hi - day_lo);
             days_found++;
          }
-         cur_day    = day_str;
-         day_hi     = 0; day_lo = DBL_MAX; has_london = false;
+         cur_day  = day_str;
+         day_hi   = 0; day_lo = DBL_MAX; lon_bars = 0;
       }
 
-      if(td.hour >= LON_START_H && td.hour < LON_END_H) {
-         day_hi    = MathMax(day_hi, iHigh(_Symbol, PERIOD_M1, i));
-         day_lo    = MathMin(day_lo, iLow(_Symbol,  PERIOD_M1, i));
-         has_london = true;
+      // Convert broker time → UTC before comparing with LON_START_H / LON_END_H
+      int bar_utc = ((td.hour - BROKER_UTC_OFFSET) % 24 + 24) % 24;
+      if(bar_utc >= LON_START_H && bar_utc < LON_END_H) {
+         day_hi  = MathMax(day_hi, iHigh(_Symbol, PERIOD_M1, i));
+         day_lo  = MathMin(day_lo, iLow(_Symbol,  PERIOD_M1, i));
+         lon_bars++;
       }
    }
 
