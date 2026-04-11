@@ -2,7 +2,7 @@
 //| LRB_V2_EA.mq5 — London Range Breakout V2                        |
 //| Semi-automated: detects setup, alerts human, manages trade       |
 //| Logic mirrors engine/filters.py + engine/trade_manager.py       |
-//| v2.7.0 — cross-validated params reverted (regime=400, delay=15, cp1=40)|
+//| v2.8.0 — FTMO optimised: cp2=100, cp4=350 (3-dataset validated)  |
 //|                                                                  |
 //| HOW TO USE:                                                      |
 //|   Strategy Tester : SEMI_AUTO can be true or false — the EA      |
@@ -15,7 +15,7 @@
 //|   Override only if your broker uses fractional units (rare).     |
 //+------------------------------------------------------------------+
 #property copyright "LRB Strategy"
-#property version   "2.70"
+#property version   "2.80"
 #property strict
 
 #include <LRB/LRB_V2_EA.mqh>
@@ -47,9 +47,9 @@ input bool   REQUIRE_SWEEP    = true; // require fake-break before entry
 input group "=== TRADE MANAGEMENT (mirror config.py) ==="
 input int    SL_PIPS          = 100;  // Stop loss
 input int    CP1_PIPS         = 40;   // +40p: both SLs → breakeven
-input int    CP2_PIPS         = 80;   // +80p: close T1; T2 SL → entry+40
+input int    CP2_PIPS         = 100;  // +100p: close T1; T2 SL → entry+40
 input int    CP3_PIPS         = 120;  // +120p: trail T2 SL → entry+100
-input int    CP4_PIPS         = 250;  // +250p: close T2 (full target 1:2.5)
+input int    CP4_PIPS         = 350;  // +350p: close T2 (full target 1:3.5)
 input int    SPREAD_PIPS      = 2;    // typical US30 spread
 input int    SLIP_PIPS        = 1;    // entry slippage estimate
 

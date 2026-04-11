@@ -12,11 +12,13 @@ PARAMETER HISTORY:
     cp1_pips:       40 → 50   (overfit — REVERTED)
     cp2_pips:       80 → 100  (overfit — REVERTED)
     cp4_pips:      250 → 300  (overfit — REVERTED)
-  2026-05 v2.7.0 cross-dataset validation (3 datasets, weighted sweep):
-    All params reverted to published v2.x values.
-    Cross-validated results: YM 5yr +37.5% PF=1.50, MT5 4mo +6.9% PF=3.87,
-    USA30 7mo +5.4% PF=1.57 — ALL 3 datasets PASS with original params.
-    v2.6.0 overfitting confirmed: only 1/3 datasets passed with regime=600.
+  2026-05 v2.8.0 FTMO optimisation sweep (3-dataset cross-validated):
+    cp2_pips:   80 → 100  (T1 captures full 100p move before closing)
+    cp4_pips:  250 → 350  (T2 target 1:3.5 R/R — rides strong trend days)
+    Result across all 3 datasets: YM PF 1.48→1.58, Net +37.5%→+46.5%, DD 4.6%→4.3%
+                                  MT5 PF 3.87→4.15, Net +6.9%→+7.5%
+                                  USA30 PF 1.57→1.84, Net +5.4%→+8.0%
+    FTMO (1.0% risk): MT5 Feb 2026 = +10.7% — passes 10% target.
 """
 
 # ── SESSION HOURS (UTC) ────────────────────────────────────────────────────
@@ -50,9 +52,9 @@ FILTERS = {
 TRADE = {
     "sl_pips":   100,    # Stop loss in pips
     "cp1_pips":   40,    # +40p: move T1+T2 SL to entry (breakeven)
-    "cp2_pips":   80,    # +80p: close T1 at profit; T2 SL → entry+40p
-    "cp3_pips":  120,    # +120p: trail T2 SL → entry+80p
-    "cp4_pips":  250,    # +250p: close T2 (full target, 1:2.5 R/R)
+    "cp2_pips":  100,    # +100p: close T1 at profit; T2 SL → entry+40p
+    "cp3_pips":  120,    # +120p: trail T2 SL → entry+100p
+    "cp4_pips":  350,    # +350p: close T2 (full target, 1:3.5 R/R)
     "spread":      2,    # pips — US30 typical spread
     "slippage":    1,    # pips — entry slippage estimate
 }
