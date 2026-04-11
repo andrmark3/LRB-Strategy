@@ -5,10 +5,16 @@ Mirrors exactly what the MT5 EA executes.
 
 Checkpoints:
   CP1 (+40p):  move both SLs to entry (breakeven)
-  CP2 (+80p):  close T1; T2 SL → entry+40p
-  CP3 (+120p): T2 SL → entry+80p
-  CP4 (+250p): close T2 — full 1:2.5 R/R
+  CP2 (+100p): close T1; T2 SL → entry+40p
+  CP3 (+120p): T2 SL → entry+100p
+  CP4 (+350p): close T2 — full 1:3.5 R/R
 Combined exit = average of T1 result + T2 result.
+
+SL behaviors:
+  Hard SL hit (no CPs)     → ep = -100p, outcome = loss
+  BE stop (CP1, no CP2)    → ep = 0p,    outcome = be
+  CP4 full target           → ep = (100+350)/2 = 225p, outcome = win
+  Session close (no stop)  → ep = last_bar_close - entry
 """
 from dataclasses import dataclass
 from config import TRADE

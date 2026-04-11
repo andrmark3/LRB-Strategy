@@ -2,7 +2,7 @@
 //| LRB_V2_EA.mq5 — London Range Breakout V2                        |
 //| Semi-automated: detects setup, alerts human, manages trade       |
 //| Logic mirrors engine/filters.py + engine/trade_manager.py       |
-//| v2.82 — auto-detect broker UTC offset; no manual config needed    |
+//| v2.83 — fix CalcTrend stable close; fix FTMO peak tracking         |
 //|                                                                  |
 //| HOW TO USE:                                                      |
 //|   Strategy Tester : SEMI_AUTO can be true or false — the EA      |
@@ -15,7 +15,7 @@
 //|   Override only if your broker uses fractional units (rare).     |
 //+------------------------------------------------------------------+
 #property copyright "LRB Strategy"
-#property version   "2.82"
+#property version   "2.83"
 #property strict
 
 #include <LRB/LRB_V2_EA.mqh>
@@ -89,6 +89,7 @@ bool     g_bull_sweep      = false, g_bear_sweep = false;
 bool     g_cp1_hit         = false, g_t1_closed = false, g_cp3_hit = false;
 double   g_entry           = 0,    g_t2_sl = 0;
 double   g_day_start_eq    = 0;
+double   g_account_peak    = 0;   // running max equity since start — for FTMO max DD check
 int      g_bars_seen       = 0;
 ulong    g_t1_ticket       = 0,    g_t2_ticket = 0;
 datetime g_lon_start_dt    = 0;
@@ -225,9 +226,9 @@ bool CheckFilters() {
    }
 
    double eq = AccountInfoDouble(ACCOUNT_EQUITY);
-   double peak = MathMax(eq, g_day_start_eq);
-   if(peak > 0 && (peak - eq) / peak * 100 >= FTMO_MAX_DD) {
-      LogSkip("FTMO max DD breached — trading halted");
+   if(g_account_peak > 0 && (g_account_peak - eq) / g_account_peak * 100 >= FTMO_MAX_DD) {
+      LogSkip(StringFormat("FTMO max DD %.1f%% breached (peak=%.0f eq=%.0f) — trading halted",
+              (g_account_peak - eq) / g_account_peak * 100, g_account_peak, eq));
       return false;
    }
 
@@ -345,12 +346,13 @@ void OnWaitingHuman(MqlDateTime &t) {
 
 //----------------------------------------------------------------------
 void ManageTrades(MqlDateTime &t) {
-   // Positions closed by broker SL or user — should be handled by sl_hit check above,
-   // but guard here in case of external close or order rejections.
    if(!HasOurPositions()) {
       g_state = IDLE;
       return;
    }
+
+   // Update peak equity on every bar so FTMO max DD check is always accurate
+   { double _eq = AccountInfoDouble(ACCOUNT_EQUITY); if(_eq > g_account_peak) g_account_peak = _eq; }
 
    double cur      = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    // HTML uses bar.c (close) for CP threshold checks:
@@ -522,7 +524,11 @@ string CalcTrend() {
    string cur_day    = "";
    double day_newest_close = 0; // close of the most-recent bar seen for cur_day
 
-   for(int i = 0; i < total_m1; i++) {
+   // Start from i=1 (skip bar[0] which is the currently forming bar — its close is
+   // the live tick price, not a settled value). bar[1] is the last completed bar.
+   // daily_closes[0] = yesterday's stable close  (matches HTML: dc.get(dk) = end-of-day)
+   // daily_closes[1..TREND_LB] = the 20 previous days for range calculation
+   for(int i = 1; i < total_m1; i++) {
       datetime bt = iTime(_Symbol, PERIOD_M1, i);
       MqlDateTime td; TimeToStruct(bt, td);
       if(td.day_of_week == 0 || td.day_of_week == 6) continue;
@@ -538,7 +544,7 @@ string CalcTrend() {
             if(days_found > TREND_LB + 2) break;
          }
          cur_day = day_str;
-         day_newest_close = iClose(_Symbol, PERIOD_M1, i); // first encounter = newest bar
+         day_newest_close = iClose(_Symbol, PERIOD_M1, i); // first encounter = newest completed bar
       }
       // Do NOT overwrite day_newest_close — we only want the first (newest) bar
    }
@@ -966,7 +972,8 @@ void ResetDay() {
    g_t1_ticket       = 0; g_t2_ticket = 0;
    g_bars_seen       = 0;
    g_assessment_sent = false;
-   g_day_start_eq    = AccountInfoDouble(ACCOUNT_EQUITY);
+   g_day_start_eq = AccountInfoDouble(ACCOUNT_EQUITY);
+   if(g_day_start_eq > g_account_peak) g_account_peak = g_day_start_eq;
 
    MqlDateTime t; TimeToStruct(TimeCurrent(), t);
    g_day_tag      = StringFormat("%04d%02d%02d", t.year, t.mon, t.day);

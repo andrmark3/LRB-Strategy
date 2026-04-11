@@ -577,18 +577,22 @@ function engine(bars,P){
     let t2sl=ed==='BUY'?en-P.sl:en+P.sl;
     const ei=nyBars.indexOf(eb);
     const nb=nyBars.slice(ei+1);
-    let ep=0,c1=false,t1d=false,t1p=0;
+    // stopd = true when a stop (SL/BE) or target (CP4) terminates the trade.
+    // Session-close exit only runs when !stopd — i.e. the trade is still open at session end.
+    // Previously used !ep (falsy 0), which gave BE-stopped trades a phantom "second chance"
+    // at session-close price — impossible in real trading. This matches Python engine exactly.
+    let ep=0,c1=false,t1d=false,t1p=0,stopd=false;
 
     for(const b of nb){
       const slHit=ed==='BUY'?b.l<=t2sl:b.h>=t2sl;
-      if(slHit){const raw=ed==='BUY'?t2sl-en:en-t2sl;ep=t1d?(t1p+raw)/2:raw;break;}
+      if(slHit){const raw=ed==='BUY'?t2sl-en:en-t2sl;ep=t1d?(t1p+raw)/2:raw;stopd=true;break;}
       const p=ed==='BUY'?b.c-en:en-b.c;
       if(p>=P.cp1&&!c1){c1=true;t2sl=en;}
       if(p>=P.cp2&&!t1d){t1d=true;t1p=P.cp2;t2sl=ed==='BUY'?en+P.cp1:en-P.cp1;}
       if(p>=P.cp3&&t1d){const ns=ed==='BUY'?en+P.cp2:en-P.cp2;if((ed==='BUY'&&ns>t2sl)||(ed==='SELL'&&ns<t2sl))t2sl=ns;}
-      if(p>=P.cp4){ep=t1d?(t1p+P.cp4)/2:P.cp4;break;}
+      if(p>=P.cp4){ep=t1d?(t1p+P.cp4)/2:P.cp4;stopd=true;break;}
     }
-    if(!ep&&nb.length){const lp2=ed==='BUY'?nb[nb.length-1].c-en:en-nb[nb.length-1].c;ep=t1d?(t1p+lp2)/2:lp2;}
+    if(!stopd&&nb.length){const lp2=ed==='BUY'?nb[nb.length-1].c-en:en-nb[nb.length-1].c;ep=t1d?(t1p+lp2)/2:lp2;}
 
     const out=ep>0.5?'win':ep<-0.5?'loss':'be';
     const pnl=ep*(eq*P.riskPct*2/P.sl);
