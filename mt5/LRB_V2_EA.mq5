@@ -152,6 +152,15 @@ void OnDeinit(const int reason) {
 
 //+------------------------------------------------------------------+
 void OnTick() {
+   // Refresh UTC offset on every tick so summer/winter DST transitions are handled
+   // correctly in multi-year backtests.  Brokers switch UTC+2 ↔ UTC+3 each March/October.
+   // OnInit() only runs once (at the start of the test), so if it fires in January (UTC+2)
+   // the offset stays wrong for every April–October summer window unless we update it here.
+   // In the Strategy Tester, TimeCurrent() and TimeGMT() both reflect the historical bar's
+   // correct DST relationship, so the delta reliably tracks summer/winter transitions.
+   if(BROKER_UTC_OFFSET == 0)
+      g_utc_offset = (int)MathRound((double)(TimeCurrent() - TimeGMT()) / 3600.0);
+
    datetime now = TimeCurrent();
    MqlDateTime t; TimeToStruct(now, t);
 
